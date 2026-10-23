@@ -1,0 +1,11 @@
+{
+  "name": "decentralised-poker",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "contracts",
+    "shared",
+    "server",
+    "web"
+  ]
+}
