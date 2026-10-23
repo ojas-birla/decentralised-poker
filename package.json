@@ -7,5 +7,11 @@
     "shared",
     "server",
     "web"
-  ]
+  ],
+  "devDependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
+  }
 }
