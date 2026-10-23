@@ -1,8 +1,8 @@
 import { TableState } from "@/lib/lobby";
 
-// PROPOSAL: SPEC.md does not define this view model yet. Agree the shape with
-// Person C (the server will send it in step 2.1). Changes to SPEC.md need a
-// commit message starting "SPEC:".
+// Mirrors SPEC.md section 9. Replace with imports from "@poker/shared" once
+// shared/view.ts exists. In the real app this shape is derived on each
+// browser from the signed event log, never sent by the server.
 //
 // Chip accounting: stack + currentBet over all seats + pot = 4000 at all times.
 // "pot" excludes bets still in front of players in the current betting round.
@@ -11,12 +11,15 @@ import { TableState } from "@/lib/lobby";
 export type CardCode = string;
 
 export interface PlayerView {
-  address: string | null; // lowercase, null = empty or busted seat
+  address: string | null; // lowercase, null only for a seat nobody took
+  connected: boolean; // from `presence` events (PROPOSAL: add to SPEC.md section 9)
   stack: number; // chips behind
   currentBet: number; // chips in front of the player this round
   folded: boolean;
   allIn: boolean;
+  busted: boolean; // 0 chips, watching as a spectator
   isDealer: boolean;
+  revealed?: [CardCode, CardCode]; // set at showdown after the reveal is verified (step 3.7)
 }
 
 // Computed by the engine, never by the UI. Only present on your own turn.
@@ -42,7 +45,7 @@ export interface TableView {
   seats: PlayerView[]; // always length 4, seat 0 first
   board: CardCode[]; // 0, 3, 4 or 5 cards
   pot: number;
-  mySeat: number | null; // null = spectator
+  mySeat: number | null; // null = not seated at this table
   myHole: [CardCode, CardCode] | null; // only ever your own cards
   turnSeat: number | null;
   turnDeadlineMs: number | null; // epoch ms
@@ -60,7 +63,7 @@ export interface RaisePresets {
   max: number;
 }
 
-// Convenience amounts for the raise slider. All are clamped to the legal range.
+// Convenience amounts for the raise controls. All are clamped to the legal range.
 export function raisePresets(view: TableView, legal: LegalActions): RaisePresets {
   const bets = view.seats.reduce((sum, p) => sum + p.currentBet, 0);
   const totalPot = view.pot + bets;
@@ -85,6 +88,20 @@ function addr(n: number): string {
   return "0x" + String(n).repeat(40);
 }
 
+function seat(n: number, stack: number, extra: Partial<PlayerView> = {}): PlayerView {
+  return {
+    address: addr(n),
+    connected: true,
+    stack,
+    currentBet: 0,
+    folded: false,
+    allIn: false,
+    busted: false,
+    isDealer: false,
+    ...extra,
+  };
+}
+
 export const MOCK_TABLE_VIEWS: MockTableScenario[] = [
   {
     label: "Your turn (flop, facing a bet)",
@@ -94,10 +111,10 @@ export const MOCK_TABLE_VIEWS: MockTableScenario[] = [
       handNumber: 3,
       totalHands: 10,
       seats: [
-        { address: addr(1), stack: 960, currentBet: 0, folded: false, allIn: false, isDealer: false },
-        { address: addr(2), stack: 920, currentBet: 20, folded: false, allIn: false, isDealer: true },
-        { address: addr(3), stack: 1000, currentBet: 0, folded: true, allIn: false, isDealer: false },
-        { address: addr(4), stack: 1050, currentBet: 0, folded: false, allIn: false, isDealer: false },
+        seat(1, 960),
+        seat(2, 920, { currentBet: 20, isDealer: true }),
+        seat(3, 1000, { folded: true }),
+        seat(4, 1050),
       ],
       board: ["Ah", "7d", "2c"],
       pot: 50,
@@ -116,10 +133,10 @@ export const MOCK_TABLE_VIEWS: MockTableScenario[] = [
       handNumber: 7,
       totalHands: 10,
       seats: [
-        { address: addr(1), stack: 800, currentBet: 0, folded: false, allIn: false, isDealer: false },
-        { address: addr(2), stack: 700, currentBet: 0, folded: false, allIn: false, isDealer: false },
-        { address: addr(3), stack: 1000, currentBet: 0, folded: true, allIn: false, isDealer: true },
-        { address: addr(4), stack: 1260, currentBet: 0, folded: false, allIn: false, isDealer: false },
+        seat(1, 800),
+        seat(2, 700),
+        seat(3, 1000, { folded: true, isDealer: true }),
+        seat(4, 1260),
       ],
       board: ["Ah", "7d", "2c", "Kh", "9s"],
       pot: 240,
@@ -138,10 +155,10 @@ export const MOCK_TABLE_VIEWS: MockTableScenario[] = [
       handNumber: 7,
       totalHands: 10,
       seats: [
-        { address: addr(1), stack: 800, currentBet: 0, folded: false, allIn: false, isDealer: false },
-        { address: addr(2), stack: 700, currentBet: 0, folded: false, allIn: false, isDealer: false },
-        { address: addr(3), stack: 1000, currentBet: 0, folded: true, allIn: false, isDealer: true },
-        { address: addr(4), stack: 1260, currentBet: 0, folded: false, allIn: false, isDealer: false },
+        seat(1, 800),
+        seat(2, 700),
+        seat(3, 1000, { folded: true, isDealer: true }),
+        seat(4, 1260),
       ],
       board: ["Ah", "7d", "2c", "Kh", "9s"],
       pot: 240,
