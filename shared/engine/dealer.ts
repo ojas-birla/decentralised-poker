@@ -35,6 +35,12 @@ export function startHand(
 ): GameState | { error: EngineError } {
   if (rngDeck !== undefined && !isValidDeck(rngDeck)) return { error: "BAD_PAYLOAD" };
 
+  // A hand may only start from "ready" (hand 1) or "settlement" (after the previous hand).
+  // Starting mid-hand would wipe committedThisHand and destroy chips.
+  if (state.tableState !== "ready" && state.tableState !== "settlement") {
+    return { error: "WRONG_STATE" };
+  }
+
   const s: GameState = structuredClone(state);
 
   // Fewer than 2 players with chips: the game is over (SPEC §4 settlement -> finished).
