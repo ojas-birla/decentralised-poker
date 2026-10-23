@@ -1,0 +1,21 @@
+{
+  "name": "@poker/shared",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "pokersolver": "2.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "5.6.3",
+    "vitest": "^5.0.5"
+  }
+}
