@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SocketProvider } from "@/components/SocketProvider";
 import { WalletProvider } from "@/components/WalletProvider";
 
 export const metadata: Metadata = {
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <WalletProvider>
-          <main className="mx-auto max-w-5xl p-6">{children}</main>
+          <SocketProvider>
+            <main className="mx-auto max-w-5xl p-6">{children}</main>
+          </SocketProvider>
         </WalletProvider>
       </body>
     </html>

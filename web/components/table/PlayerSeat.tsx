@@ -27,17 +27,26 @@ export default function PlayerSeat({
     );
   }
 
-  const inHand = !player.folded;
+  const inHand = !player.folded && !player.busted;
+  const shown = hole ?? player.revealed ?? null;
 
   return (
     <div
       className={`w-40 rounded-xl bg-slate-700 p-2 text-xs shadow ${
         isTurn ? "ring-2 ring-green-400" : ""
-      } ${player.folded ? "opacity-60" : ""}`}
+      } ${player.folded || player.busted ? "opacity-60" : ""}`}
     >
       <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-500 font-semibold">
-          {index + 1}
+        <div className="relative h-9 w-9 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-500 font-semibold">
+            {index + 1}
+          </div>
+          <span
+            title={player.connected ? "Connected" : "Disconnected"}
+            className={`absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-slate-700 ${
+              player.connected ? "bg-green-400" : "bg-red-500"
+            }`}
+          />
         </div>
         <div className="min-w-0">
           <p className="truncate font-mono text-[11px] text-slate-300">
@@ -55,10 +64,10 @@ export default function PlayerSeat({
       </div>
 
       <div className="mt-2 flex items-center gap-1">
-        {inHand && hole ? (
+        {inHand && shown ? (
           <>
-            <PlayingCard card={hole[0]} small />
-            <PlayingCard card={hole[1]} small />
+            <PlayingCard card={shown[0]} small />
+            <PlayingCard card={shown[1]} small />
           </>
         ) : inHand ? (
           <>
@@ -66,7 +75,7 @@ export default function PlayerSeat({
             <PlayingCard hidden small />
           </>
         ) : (
-          <span className="text-slate-300">Folded</span>
+          <span className="text-slate-300">{player.busted ? "Busted" : "Folded"}</span>
         )}
         {player.allIn && (
           <span className="ml-auto rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-slate-900">
@@ -76,7 +85,7 @@ export default function PlayerSeat({
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <span>{player.stack} chips</span>
+        <span className="rounded-full bg-slate-900 px-2 py-0.5 font-medium">{player.stack}</span>
         {player.currentBet > 0 && (
           <span className="rounded-full bg-rose-500 px-2 py-0.5 font-medium">
             Bet {player.currentBet}
