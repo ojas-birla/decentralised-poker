@@ -1,101 +1,125 @@
 // shared/engine/dealer.ts
-import { GameState, PlayerState } from "./types";
-import { holeCardIndices, CardId } from "./cards";
+import { GameState, PlayerState, Seat, EngineError } from "./types";
+import { holeCardIndices, isValidDeck, CardId } from "./cards";
 
-// Helper to find the next active seat (not evicted, has chips)
-function nextActiveSeat(currentSeat: number, seats: PlayerState[]): 0 | 1 | 2 | 3 {
-  let next = (currentSeat + 1) % 4;
-  for (let i = 0; i < 4; i++) {
-    if (!seats[next].evicted && seats[next].chips > 0) {
-      return next as 0 | 1 | 2 | 3;
-    }
-    next = (next + 1) % 4;
+const canPlay = (p: PlayerState) => !p.evicted && p.chips > 0;
+
+// Next seat (clockwise, exclusive) that is not evicted and has chips.
+function nextActiveSeat(current: Seat, seats: readonly PlayerState[]): Seat {
+  for (let i = 1; i <= 4; i++) {
+    const s = (current + i) % 4;
+    if (canPlay(seats[s])) return s as Seat;
   }
-  return currentSeat as 0 | 1 | 2 | 3; // Fallback
+  return current; // unreachable when >= 2 players can play
 }
 
-export function startHand(state: GameState, rngCards?: CardId[]): GameState {
-  const newState = { ...state, seats: [...state.seats] } as GameState;
-  
-  // 1. Move dealer button
-  newState.dealerSeat = nextActiveSeat(state.dealerSeat, newState.seats);
-  
-  // 2. Identify active players to check for heads-up
-  const activeSeats = newState.seats
-    .map((p, i) => (!p.evicted && p.chips > 0) ? i : -1)
-    .filter(i => i !== -1) as (0 | 1 | 2 | 3)[];
-    
-  const isHeadsUp = activeSeats.length === 2;
+function postBlind(p: PlayerState, amount: number): void {
+  const paid = Math.min(amount, p.chips); // short stacks post what they have
+  p.chips -= paid;
+  p.committedThisStreet += paid;
+  p.committedThisHand += paid;
+  if (p.chips === 0) p.isAllIn = true;
+}
 
-  // 3. Post Blinds (Heads-up rules apply)
-  let sbSeat: 0 | 1 | 2 | 3;
-  let bbSeat: 0 | 1 | 2 | 3;
-  let firstToAct: 0 | 1 | 2 | 3;
+/**
+ * Starts a new hand.
+ * - rngDeck given  -> Phase 2 dev dealing: a full 52-card permutation, hand goes straight to "betting".
+ * - rngDeck absent -> Phase 3 padlock shuffle: hand goes to "dealing", needsCards lists hole-card positions.
+ *
+ * If betting is closed from the start (everyone all-in after blinds), toActSeat is null.
+ * The caller must then run the streets forward (advanceStreet) once the needed cards are available.
+ */
+export function startHand(
+  state: GameState,
+  rngDeck?: CardId[]
+): GameState | { error: EngineError } {
+  if (rngDeck !== undefined && !isValidDeck(rngDeck)) return { error: "BAD_PAYLOAD" };
 
-  if (isHeadsUp) {
-    // SPEC: Heads-up (2 players left): dealer posts the small blind and acts first before the flop.
-    sbSeat = newState.dealerSeat;
-    bbSeat = nextActiveSeat(sbSeat, newState.seats);
-    firstToAct = sbSeat; 
-  } else {
-    // Standard (3+ players)
-    sbSeat = nextActiveSeat(newState.dealerSeat, newState.seats);
-    bbSeat = nextActiveSeat(sbSeat, newState.seats);
-    firstToAct = nextActiveSeat(bbSeat, newState.seats);
+  const s: GameState = structuredClone(state);
+
+  // Fewer than 2 players with chips: the game is over (SPEC §4 settlement -> finished).
+  if (s.seats.filter(canPlay).length < 2) {
+    s.tableState = "finished";
+    s.toActSeat = null;
+    return s;
   }
 
-  // 4. Reset player states for the new hand
-  newState.seats = newState.seats.map(p => ({
-    ...p,
-    inHand: p.chips > 0 && !p.evicted,
-    hasFolded: false,
-    isAllIn: false,
-    committedThisStreet: 0,
-    committedThisHand: 0,
-  })) as [PlayerState, PlayerState, PlayerState, PlayerState];
+  // 1. Move the dealer button (skips busted/evicted seats).
+  s.dealerSeat = nextActiveSeat(s.dealerSeat, s.seats);
 
-  // Post Small Blind (Math.min handles short stacks)
-  const sbAmount = Math.min(newState.blinds.small, newState.seats[sbSeat].chips);
-  newState.seats[sbSeat].chips -= sbAmount;
-  newState.seats[sbSeat].committedThisStreet = sbAmount;
-  newState.seats[sbSeat].committedThisHand = sbAmount;
-  if (newState.seats[sbSeat].chips === 0) newState.seats[sbSeat].isAllIn = true;
+  // 2. Who is playing this hand (decided BEFORE blinds are taken).
+  const playing = s.seats.map(canPlay);
+  const isHeadsUp = playing.filter(Boolean).length === 2;
 
-  // Post Big Blind
-  const bbAmount = Math.min(newState.blinds.big, newState.seats[bbSeat].chips);
-  newState.seats[bbSeat].chips -= bbAmount;
-  newState.seats[bbSeat].committedThisStreet = bbAmount;
-  newState.seats[bbSeat].committedThisHand = bbAmount;
-  if (newState.seats[bbSeat].chips === 0) newState.seats[bbSeat].isAllIn = true;
+  // 3. Blind seats. Heads-up: dealer posts the small blind and acts first preflop.
+  const sbSeat: Seat = isHeadsUp ? s.dealerSeat : nextActiveSeat(s.dealerSeat, s.seats);
+  const bbSeat: Seat = nextActiveSeat(sbSeat, s.seats);
 
-  // 5. Setup Betting State
-  newState.currentBet = newState.blinds.big;
-  newState.lastRaiseSize = newState.blinds.big;
-  newState.toActSeat = firstToAct;
-  newState.street = "preflop";
-  newState.board = [];
-  newState.pots = [];
+  // 4. Reset per-hand state.
+  s.seats.forEach((p, i) => {
+    p.inHand = playing[i];
+    p.hasFolded = false;
+    p.isAllIn = false;
+    p.committedThisStreet = 0;
+    p.committedThisHand = 0;
+    p.hasActedThisStreet = false; // blinds do not count as acting (BB keeps its option)
+  });
 
-  // 6. Deal Hole Cards
-  newState.holeCards = [[], [], [], []];
-  if (rngCards) {
-    // Phase 2 (Server Dealing)
-    for (let s = 0; s < 4; s++) {
-      if (newState.seats[s].inHand) {
-        const [idx1, idx2] = holeCardIndices(s as 0|1|2|3, newState.dealerSeat);
-        newState.holeCards[s] = [rngCards[idx1], rngCards[idx2]];
+  postBlind(s.seats[sbSeat], s.blinds.small);
+  postBlind(s.seats[bbSeat], s.blinds.big);
+
+  // 5. Betting state.
+  s.handNumber += 1;
+  s.street = "preflop";
+  s.board = [];
+  s.pots = [];
+  s.awards = [];
+  s.currentBet = s.blinds.big; // stays 10 even if the BB posted less (short all-in)
+  s.lastRaiseSize = s.blinds.big;
+  delete s.aborted;
+
+  // First to act: heads-up starts at the SB (inclusive), otherwise left of the BB.
+  // Skip anyone who is all-in from posting a blind.
+  const start = isHeadsUp ? sbSeat : (bbSeat + 1) % 4;
+  let first: Seat | null = null;
+  for (let i = 0; i < 4; i++) {
+    const seat = ((start + i) % 4) as Seat;
+    const p = s.seats[seat];
+    if (p.inHand && !p.isAllIn) {
+      first = seat;
+      break;
+    }
+  }
+  // No betting possible if nobody can act, or the only player who can act already matches the bet.
+  const canAct = s.seats.filter(p => p.inHand && !p.isAllIn);
+  const closed =
+    first === null || (canAct.length === 1 && canAct[0].committedThisStreet >= s.currentBet);
+  s.toActSeat = closed ? null : first;
+
+  // 6. Deal hole cards.
+  s.holeCards = [[], [], [], []];
+  if (rngDeck) {
+    // Phase 2 (dev): server-provided deck.
+    s.deck = [...rngDeck];
+    s.needsCards = null;
+    s.tableState = "betting";
+    for (let seat = 0; seat < 4; seat++) {
+      if (s.seats[seat].inHand) {
+        const [i1, i2] = holeCardIndices(seat as Seat, s.dealerSeat);
+        s.holeCards[seat] = [rngDeck[i1], rngDeck[i2]];
       }
     }
-    newState.needsCards = null;
   } else {
-    // Phase 3 (Padlock Shuffle) - Engine pauses and waits for unlocks
-    newState.needsCards = [];
-    for (let s = 0; s < 4; s++) {
-      if (newState.seats[s].inHand) {
-         newState.needsCards.push(...holeCardIndices(s as 0|1|2|3, newState.dealerSeat));
+    // Phase 3: padlock shuffle. Engine waits for unlocks of these deck positions.
+    s.deck = null;
+    s.tableState = "dealing";
+    s.needsCards = [];
+    for (let seat = 0; seat < 4; seat++) {
+      if (s.seats[seat].inHand) {
+        s.needsCards.push(...holeCardIndices(seat as Seat, s.dealerSeat));
       }
     }
   }
 
-  return newState;
+  return s;
 }
