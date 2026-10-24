@@ -22,6 +22,7 @@ import type {
 } from "@poker/shared";
 import type { Db } from "./db";
 import { validatePayload } from "./payloads";
+import { logStreets } from "./streetLog"
 import { syncTurnTimer } from "./timers";
 import {
   addCheckpointSig,
@@ -209,6 +210,7 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
     }
 
     if (nextState !== state) {
+      if (env.type === "bet_action") logStreets(db, env.tableId, state, nextState, now);
       saveState(db, env.tableId, nextState, now);
       // Restart the clock for whoever acts next (or clear it). Never for `join`: a reconnect changes no game
       // state, and otherwise a stalling player could rejoin forever to reset their own 30 seconds.
