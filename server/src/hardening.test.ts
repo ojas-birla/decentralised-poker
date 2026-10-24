@@ -267,10 +267,11 @@ describe("server restart", () => {
       identities: seeded.identities, think: [20, 60], timeoutMs: 90_000,
     });
     try {
-      // Kill the server in the middle of hand 2.
+      // Kill the server in the middle of the first hand. (A game can end early when one player wins every chip,
+      // so hand 2 is not guaranteed to happen.)
       await waitFor(() => {
         const s = run.bots[0].latest();
-        return !!s && s.handNumber === 2 && s.tableState === "betting";
+        return !!s && s.handNumber >= 1 && s.tableState === "betting";
       }, 30_000);
       await gs.close();
       await sleep(300);
@@ -288,7 +289,10 @@ describe("server restart", () => {
     const db = openDb(file);
     const g = loadGame(db, "42")!;
     expect(g.state.tableState).toBe("finished");
-    expect(g.state.checkpointNumber).toBe(3);
+    // Normally 3 hands; fewer if one player won every chip earlier. One checkpoint per hand played.
+    expect(g.state.handNumber).toBeGreaterThanOrEqual(1);
+    expect(g.state.handNumber).toBeLessThanOrEqual(3);
+    expect(g.state.checkpointNumber).toBe(g.state.handNumber);
     expect(totalChips(g.state)).toBe(4000);
     expect(Object.keys(latestCompleteCheckpoint(db, "42")!.sigs)).toHaveLength(4);
     db.close();
