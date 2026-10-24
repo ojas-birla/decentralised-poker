@@ -10,6 +10,7 @@
 import { applyAction } from "@poker/shared";
 import type { GameState, Seat } from "@poker/shared";
 import type { Db } from "./db";
+import { logStreets } from "./streetLog";
 import { appendEvent, loadGame, saveState } from "./store";
 
 export const TURN_MS = 30_000;
@@ -79,6 +80,7 @@ function fireOne(db: Db, t: TimerRow, now: number): AutoResult | null {
     kind: "server", handNumber: s.handNumber, seat: t.seat, type: "auto",
     body: { kind: "auto", seat: t.seat, action, handNumber: s.handNumber },
   }, now);
+  logStreets(db, t.tableId, s, next, now); 
   saveState(db, t.tableId, next, now);
   syncTurnTimer(db, t.tableId, next, now);
   return { tableId: t.tableId, index, seat: t.seat, action, handNumber: s.handNumber, state: next };

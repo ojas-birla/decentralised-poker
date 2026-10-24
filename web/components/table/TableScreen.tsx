@@ -64,7 +64,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
 
   const banner = buildBanner(simulateLost ? "disconnected" : connection, notice);
 
-    if (!USE_MOCK) return <LiveTable tableId={tableId} />;
+  if (!USE_MOCK) return <LiveTable tableId={tableId} />;
 
   return (
     <div className="space-y-6">
@@ -126,7 +126,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
 
       {lastAction && (
         <p className="text-sm text-gray-600">
-          Mock mode: you chose &quot;{lastAction}&quot;. Nothing is sent until step 2.1.
+          Mock mode: you chose &quot;{lastAction}&quot;. Nothing is sent to the server.
         </p>
       )}
     </div>
