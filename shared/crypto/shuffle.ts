@@ -43,7 +43,7 @@ const CARD_HEX_RE = /^(?:0x)?[0-9a-f]{64}$/i;
  * Throws if the deck is not exactly 52 well-formed 32-byte hex strings.
  * Call on every incoming shuffle:step before relaying it (Phase 3.1).
  */
-function verifyDeckShape(deck: unknown): asserts deck is string[] {
+export function verifyDeckShape(deck: unknown): asserts deck is string[] {
   if (!Array.isArray(deck) || deck.length !== 52) {
     throw new Error(
       `deck must be an array of 52 cards, got ${
