@@ -6,6 +6,7 @@ import WalletBar from "@/components/WalletBar";
 import { useWallet } from "@/components/WalletProvider";
 import { SEATS, TableSummary, USE_MOCK, fetchOpenTables } from "@/lib/lobby";
 import { weiToEth } from "@/lib/createTable";
+import { ChainError, ChainStatus, joinTable as joinTableOnChain } from "@/lib/poker";
 
 const POLL_MS = 5000;
 
@@ -14,6 +15,10 @@ export default function LobbyPage() {
   const { address, isWrongNetwork } = useWallet();
   const [tables, setTables] = useState<TableSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [joinStatus, setJoinStatus] = useState<ChainStatus | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [manualId, setManualId] = useState("");
   const walletReady = !!address && !isWrongNetwork;
 
   const load = useCallback(async (isCancelled: () => boolean) => {
@@ -41,9 +46,19 @@ export default function LobbyPage() {
     };
   }, [load]);
 
-  function handleJoin(tableId: string) {
-    // Step 2.3 sends the real joinTable transaction (with the session key) before this.
-    router.push(`/table/${tableId}`);
+  async function handleJoin(tableId: string) {
+    if (joiningId !== null) return;
+    setJoinError(null);
+    setJoiningId(tableId);
+    setJoinStatus("wallet");
+    try {
+      await joinTableOnChain(tableId, setJoinStatus);
+      router.push(`/table/${tableId}`);
+    } catch (err) {
+      setJoinError(err instanceof ChainError ? err.message : "Something went wrong.");
+      setJoiningId(null);
+      setJoinStatus(null);
+    }
   }
 
   // SPEC.md section 4: only tables in the "lobby" state (fewer than 4 seats) can be joined.
@@ -78,6 +93,26 @@ export default function LobbyPage() {
         <p className="text-sm">No open tables right now. Create one from the home page.</p>
       )}
 
+      {joinError && (
+        <p className="rounded border border-red-500 p-3 text-sm text-red-600">{joinError}</p>
+      )}
+
+      <div className="flex max-w-md items-center gap-2 rounded border p-3 text-sm">
+        <input
+          value={manualId}
+          onChange={(e) => setManualId(e.target.value.trim())}
+          placeholder="Table ID, e.g. 1"
+          className="w-full rounded border p-2"
+        />
+        <button
+          onClick={() => handleJoin(manualId)}
+          disabled={!walletReady || joiningId !== null || manualId === ""}
+          className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+        >
+          Join by ID
+        </button>
+      </div>
+      
       <ul className="space-y-3">
         {open?.map((t) => {
           const full = t.players.length >= SEATS;
@@ -106,10 +141,16 @@ export default function LobbyPage() {
               ) : (
                 <button
                   onClick={() => handleJoin(t.tableId)}
-                  disabled={full || !walletReady}
+                  disabled={full || !walletReady || joiningId !== null}
                   className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
                 >
-                  {full ? "Full" : "Join"}
+                  {joiningId === t.tableId
+                    ? joinStatus === "wallet"
+                      ? "Confirm in MetaMask…"
+                      : "Waiting for confirmation…"
+                    : full
+                      ? "Full"
+                      : "Join"}
                 </button>
               )}
             </li>
