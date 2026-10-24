@@ -4,10 +4,10 @@ import { lockAndShuffle } from "../shuffle";
 import { verifyReveal } from "../verify";
 import { loadOrCreatePadlock } from "../padlockStore";
 import {
-  deriveDealing, nextDuties, myHoleCards, boardCard, lockedForOwner, type Seat, type Duty,
+  deriveDealing, nextDuties, myHoleCards, boardCard, lockedForOwner, verifyAllReveals, type Seat, type Duty,
 } from "../dealingView";
 import { holeCardIndices } from "../../engine/cards";
-import type { EventRow } from "../../protocol";
+import type { DealingEventRow as EventRow } from "../dealingView";
 
 const rnd = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 function randInt(max: number): number {
@@ -140,5 +140,49 @@ describe("dealing from the event log", () => {
     expect(v2).toEqual(v1);
     for (const s of ACTIVE)
       expect(nextDuties({ view: v1, mySeat: s as Seat, activeSeats: ACTIVE, dealer: DEALER, needsCards: HOLE, showdown: false, stillInHand: true })).toEqual([]);
+  });
+});
+
+describe("showdown check", () => {
+  const reveal = (log: Log, seat: number, pad: Padlock) => log.push(seat, "reveal_padlock", { padlock: pad.hex });
+  const check = (log: Log, seats = ACTIVE) => verifyAllReveals({
+    view: deriveDealing(log.events, HAND, ACTIVE, DEALER), tableId: TABLE, hand: HAND, dealer: DEALER,
+    activeSeats: ACTIVE, revealSeats: seats });
+
+  it("PENDING until everyone still in has revealed, then ok with 8 hole + 5 board distinct cards", () => {
+    const { pads, log } = play({ cards: [...HOLE, ...BOARD] });
+    reveal(log, 0, pads[0]); reveal(log, 1, pads[1]); reveal(log, 2, pads[2]);
+    expect(check(log)).toEqual({ ok: false, reason: "PENDING" });
+    reveal(log, 3, pads[3]);
+    const r = check(log);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const all = [...Object.values(r.hands).flat(), ...r.board];
+      expect(all.length).toBe(13);
+      expect(new Set(all).size).toBe(13);
+      for (const s of ACTIVE) { const m = myHoleCards(deriveDealing(log.events, HAND, ACTIVE, DEALER), s as Seat, pads[s], DEALER, ACTIVE); if (m.ok) expect(r.hands[s]).toEqual(m.cards); }
+    }
+  });
+
+  it("a folded player never has to reveal", () => {
+    const { pads, log } = play({ cards: [...HOLE, ...BOARD] });
+    reveal(log, 0, pads[0]); reveal(log, 1, pads[1]); reveal(log, 2, pads[2]);
+    expect(check(log, [0, 1, 2]).ok).toBe(true);
+  });
+
+  it("a revealed padlock that does not match the commitment is BAD_REVEAL", () => {
+    const { pads, log } = play({ cards: [...HOLE, ...BOARD] });
+    reveal(log, 0, pads[0]); reveal(log, 1, generatePadlock(rnd(64))); reveal(log, 2, pads[2]); reveal(log, 3, pads[3]);
+    expect(check(log)).toEqual({ ok: false, reason: "BAD_REVEAL", seat: 1 });
+  });
+
+  it("a wrong unlock is caught at showdown as BAD_REVEAL", () => {
+    const rogue = generatePadlock(rnd(64));
+    const { pads, log } = play({ cards: [...HOLE, ...BOARD],
+      tamper: (seat, d, good) => (seat === 2 && d.kind === "unlock" && d.forSeat === 0 ? unlockCard(d.valueIn, rogue) : good) });
+    for (const s of ACTIVE) reveal(log, s, pads[s]);
+    const r = check(log);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("BAD_REVEAL");
   });
 });

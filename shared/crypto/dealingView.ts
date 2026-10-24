@@ -4,11 +4,26 @@
 //
 // Chain rule (SPEC §2): unlocks of one card go in ascending seat order, each taking the previous
 // output. Hole card of seat X: the other active seats, then X privately. Board card: all active seats.
-import { unlockCard, type Padlock } from "./padlock";
+import { unlockCard, from32Hex, to32Hex, type Padlock } from "./padlock";
+import { verifyReveal } from "./verify";
 import { CARD_POINTS, cardIndexFromPoint } from "./cards";
 import { holeCardIndices, BOARD_INDICES } from "../engine/cards";
-import type { EventRow } from "../protocol";
-import type { Envelope } from "../types";
+
+// Minimal structural types, so this file needs nothing from protocol.ts / types.ts.
+// Any real EventRow from the server fits these.
+export interface DealingEnvelope {
+  seat: number;
+  type: string;
+  payload: unknown;
+}
+export interface DealingEventRow {
+  index?: number;
+  kind: "envelope" | "server";
+  handNumber: number;
+  body: unknown;
+}
+type EventRow = DealingEventRow;
+type Envelope = DealingEnvelope;
 
 export type Seat = 0 | 1 | 2 | 3;
 export type ForSeat = Seat | "board";
@@ -181,4 +196,58 @@ export function boardCard(view: DealingView, cardIndex: number, activeSeats: rea
   if (!u || u.forSeat !== "board") return null;
   if (u.chain.length !== unlockOrder("board", activeSeats).length) return null;
   return cardIndexFromPoint(u.chain[u.chain.length - 1].value) ?? null;
+}
+
+export type ShowdownCheck =
+  | { ok: true; hands: Record<number, [number, number]>; board: number[] }
+  | { ok: false; reason: "PENDING" }
+  | { ok: false; reason: "BAD_REVEAL" | "DUPLICATE_CARD"; seat?: number };
+
+/**
+ * Showdown check, pure, so the web client AND the server engine run the same code on the same log.
+ * `revealSeats` = seats that must reveal (still in the hand, not folded).
+ * Checks: every reveal matches its commitment, every hole card decodes to a real card, and no card
+ * appears twice among the revealed hole cards plus the board. Folded players' cards are never needed.
+ */
+export function verifyAllReveals(o: {
+  view: DealingView; tableId: string; hand: number; dealer: Seat;
+  activeSeats: readonly number[]; revealSeats: readonly number[];
+}): ShowdownCheck {
+  const { view } = o;
+  if (!o.revealSeats.every((s) => view.reveals[s] !== undefined)) return { ok: false, reason: "PENDING" };
+
+  const hands: Record<number, [number, number]> = {};
+  const seen = new Set<number>();
+  const dup = (id: number) => (seen.has(id) ? true : (seen.add(id), false));
+
+  for (const seat of o.revealSeats) {
+    const commitment = view.commitments[seat];
+    if (commitment === undefined) return { ok: false, reason: "BAD_REVEAL", seat };
+    let pad: Padlock;
+    try { const scalar = from32Hex(view.reveals[seat]); pad = { scalar, hex: to32Hex(scalar) }; }
+    catch { return { ok: false, reason: "BAD_REVEAL", seat }; }
+
+    const ids: number[] = [];
+    for (const i of holeCardIndices(seat as Seat, o.dealer)) {
+      const locked = lockedForOwner(view, i, o.activeSeats);
+      if (locked === null) return { ok: false, reason: "BAD_REVEAL", seat };   // owner's cards were never fully unlocked
+      const id = cardIndexFromPoint(unlockCard(locked, pad));
+      if (id === undefined) return { ok: false, reason: "BAD_REVEAL", seat };
+      const r = verifyReveal({ revealedPadlockHex: pad.hex, commitmentHex: commitment, tableId: o.tableId,
+        handNumber: o.hand, lockedCardHex: locked, claimedCardIndex: id });
+      if (!r.ok) return { ok: false, reason: "BAD_REVEAL", seat };
+      if (dup(id)) return { ok: false, reason: "DUPLICATE_CARD", seat };
+      ids.push(id);
+    }
+    hands[seat] = ids as [number, number];
+  }
+
+  const board: number[] = [];
+  for (const i of [...BOARD_INDICES.flop, ...BOARD_INDICES.turn, ...BOARD_INDICES.river]) {
+    const id = boardCard(view, i, o.activeSeats);
+    if (id === null) continue;
+    if (dup(id)) return { ok: false, reason: "DUPLICATE_CARD" };
+    board.push(id);
+  }
+  return { ok: true, hands, board };
 }
