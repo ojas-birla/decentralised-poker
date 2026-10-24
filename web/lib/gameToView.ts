@@ -13,6 +13,7 @@ export interface ToTableViewInput {
   players: PlayerPresence[]; // from the `presence` events / hello view
   timer: TimerInfo | null;
   totalHands: number; // from GET /api/tables/:id (or the lobby row)
+  myCards?: readonly number[] | null; // from useDealing (real shuffle); server cards win if present
 }
 
 const TOTAL_CHIPS = 4000;
@@ -28,6 +29,7 @@ export function toTableView({
   players,
   timer,
   totalHands,
+  myCards,
 }: ToTableViewInput): TableView {
   const showdownLike = state.tableState === "showdown" || state.tableState === "settlement";
   const handInPlay =
@@ -68,7 +70,9 @@ export function toTableView({
     board: state.board.map(cardName),
     pot,
     mySeat,
-    myHole: mySeat !== null ? pair(state.holeCards[mySeat]) : null,
+    // Server cards first (dev deck), then the cards my browser unlocked (real shuffle).
+    myHole:
+      mySeat !== null ? pair(state.holeCards[mySeat]) ?? pair(myCards ?? undefined) : null,
     turnSeat,
     turnDeadlineMs: turnSeat !== null && timer && timer.seat === turnSeat ? timer.deadline : null,
     legal: mySeat !== null ? legalActions(state, mySeat) : null,

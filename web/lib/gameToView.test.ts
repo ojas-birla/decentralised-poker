@@ -52,3 +52,39 @@ describe("toTableView: busted", () => {
     expect(view.seats.every((s) => !s.busted)).toBe(true);
   });
 });
+
+describe("toTableView: myCards (real shuffle)", () => {
+  const input = (over: Partial<Parameters<typeof toTableView>[0]> = {}) => ({
+    state: game({ tableState: "dealing" }),
+    mySeat: 0 as Seat,
+    players: [],
+    timer: null,
+    totalHands: 10,
+    ...over,
+  });
+
+  it("shows no cards while myCards is null and the server sent none", () => {
+    expect(toTableView(input()).myHole).toBeNull();
+  });
+
+  it("uses myCards when the server holeCards are empty", () => {
+    const view = toTableView(input({ myCards: [0, 13] }));
+    expect(view.myHole).not.toBeNull();
+    expect(view.myHole).toHaveLength(2);
+  });
+
+  it("prefers the server's cards when both exist", () => {
+    const state = game({ tableState: "betting", holeCards: [[1, 2], [], [], []] });
+    const withServer = toTableView(input({ state, myCards: [0, 13] }));
+    const serverOnly = toTableView(input({ state }));
+    expect(withServer.myHole).toEqual(serverOnly.myHole);
+  });
+
+  it("ignores myCards that are not exactly two", () => {
+    expect(toTableView(input({ myCards: [5] })).myHole).toBeNull();
+  });
+
+  it("never fills myHole for a spectator", () => {
+    expect(toTableView(input({ mySeat: null, myCards: [0, 13] })).myHole).toBeNull();
+  });
+});
