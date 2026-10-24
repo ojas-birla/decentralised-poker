@@ -21,11 +21,13 @@ export default function PokerTable({
   view,
   log,
   banner,
+  pending = false,
   onAction,
 }: {
   view: TableView;
   log: LogEntry[];
   banner: Banner | null;
+  pending?: boolean; // an action is in flight: the whole action bar is disabled
   onAction: (action: PlayerAction) => void;
 }) {
   const [logOpen, setLogOpen] = useState(false);
@@ -125,7 +127,9 @@ export default function PokerTable({
         legal={view.legal}
         presets={presets}
         myStack={myStack}
-        enabled={myTurn}
+        enabled={myTurn && !pending}
+        pending={pending}
+        outOfChips={view.mySeat !== null && view.seats[view.mySeat].busted}
         onAction={onAction}
       />
 

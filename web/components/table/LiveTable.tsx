@@ -9,6 +9,7 @@ import { useTableInfo, type TableInfo } from "@/hooks/useTableInfo";
 import { useAutoMessages } from "@/hooks/useAutoMessages";
 import { useLastResult } from "@/hooks/useLastResult";
 import { toBetPayload, toTableView } from "@/lib/gameToView";
+import { disconnectedTurnNotice } from "@/lib/turnNotice";
 import { ConnectionState, TableNotice, buildBanner, buildLog } from "@/lib/statusLog";
 import type { PlayerAction } from "@/lib/tableView";
 import { SeatView, WaitingRoomState, isWaitingState } from "@/lib/waitingRoom";
@@ -83,6 +84,8 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   else if (state?.aborted) notice = { kind: "hand_aborted", reason: state.aborted.reason };
   else if (abort && state && abort.handNumber === state.handNumber) {
     notice = { kind: "hand_aborted", reason: abort.reason };
+  } else if (state) {
+    notice = disconnectedTurnNotice(state, players, timer, mySeat);
   }
   const banner = buildBanner(connectionFor(phase), notice);
 
@@ -179,7 +182,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
       {lastResult.visible && lastResult.result && (
         <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
       )}
-      <PokerTable view={view} log={log} banner={banner} onAction={onAction} />
+      <PokerTable view={view} log={log} banner={banner} pending={pending} onAction={onAction} />
       {pending && <p className="text-sm text-gray-600">Sending…</p>}
       {actionError && (
         <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">

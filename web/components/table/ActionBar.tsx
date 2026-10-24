@@ -14,12 +14,16 @@ export default function ActionBar({
   presets,
   myStack,
   enabled,
+  pending = false,
+  outOfChips = false,
   onAction,
 }: {
   legal: LegalActions | null;
   presets: RaisePresets | null;
   myStack: number;
-  enabled: boolean; // true only on your turn
+  enabled: boolean; // true only on your turn and when no action is in flight
+  pending?: boolean; // an action is on its way to the server
+  outOfChips?: boolean; // your seat is out of the game and only watching
   onAction: (action: PlayerAction) => void;
 }) {
   const min = legal?.minRaiseTo ?? 0;
@@ -152,7 +156,13 @@ export default function ActionBar({
         aria-label="Raise amount slider"
       />
 
-      {!active && <p className="text-center text-xs text-slate-400">Buttons unlock on your turn.</p>}
+      {outOfChips ? (
+        <p className="text-center text-xs text-slate-400">You are out of chips and watching.</p>
+      ) : pending ? (
+        <p className="text-center text-xs text-slate-400">Sending your action…</p>
+      ) : (
+        !active && <p className="text-center text-xs text-slate-400">Buttons unlock on your turn.</p>
+      )}
     </div>
   );
 }
