@@ -1,0 +1,26 @@
+{
+  "name": "@poker/server",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "@poker/shared": "*",
+    "better-sqlite3": "13.0.3",
+    "cors": "2.8.6",
+    "express": "5.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "tsx": "4.23.15",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
+  }
+}

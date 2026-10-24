@@ -23,6 +23,7 @@ contracts/coverage/
 
 # SQLite database
 server/*.db
+server/*.db*
 server/*.db-journal
 server/*.sqlite
 server/data/
