@@ -190,9 +190,12 @@ export function getEvents(db: Db, tableId: string, fromIndex = 0): EventRow[] {
 export function logReject(db: Db, tableId: string, seat: number | null, raw: unknown, reject: Reject, now = Date.now()): void {
   let rawJson = "";
   try { rawJson = JSON.stringify(raw) ?? ""; } catch { rawJson = "<unserialisable>"; }
-  db.prepare(
+  const info = db.prepare(
     "INSERT INTO rejects (table_id, seat, ref_seq, code, message, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).run(tableId, seat, reject.refSeq, reject.code, reject.message, rawJson.slice(0, 20_000), now);
+  // C8: a client that sends garbage all day must not grow the database without limit. Keep the newest 5000 rows.
+  const id = Number(info.lastInsertRowid);
+  if (id % 500 === 0) db.prepare("DELETE FROM rejects WHERE id <= ?").run(id - 5000);
 }
 
 // ---------------------------------------------------------------- checkpoints

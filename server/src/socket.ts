@@ -41,8 +41,13 @@ export interface SocketLayer {
   onAuto(r: AutoResult): void;
   /** Call when a table changed without a socket message (chain watcher, restart recovery). */
   tableChanged(tableId: string): void;
-  close(): void;
+  /** Disconnects everyone and closes the http server. Handlers that fire during shutdown never touch the database. */
+  close(): Promise<void>;
 }
+
+/** C8 flood guard: a real client sends a handful of messages per second at most. */
+export const FLOOD_WINDOW_MS = 10_000;
+export const FLOOD_MAX_MESSAGES = 200;
 
 export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps, origins: string[]): SocketLayer {
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
@@ -51,6 +56,7 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
     maxHttpBufferSize: 256 * 1024,
   });
 
+  let closed = false; // set by close(): from then on no handler may use the database
   /** One live socket per seat: the newest hello wins. */
   const seatSockets = new Map<string, S>();
   /** Highest log index already sent to the room, per table. Tables nobody has opened yet have no entry. */
@@ -81,6 +87,7 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
   }
 
   function tableChanged(tableId: string): void {
+    if (closed) return;
     try {
       afterChange(db, tableId);
       broadcast(tableId);
@@ -90,6 +97,7 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
   }
 
   function onAuto(r: AutoResult): void {
+    if (closed) return;
     try {
       io.to(roomOf(r.tableId)).emit("auto", {
         tableId: r.tableId, index: r.index, seat: r.seat, action: r.action, handNumber: r.handNumber,
@@ -103,9 +111,25 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
   io.on("connection", (socket: S) => {
     const binding = (): Partial<Binding> => socket.data as Partial<Binding>;
 
+    // Flood guard (C8): more than FLOOD_MAX_MESSAGES events in FLOOD_WINDOW_MS and the socket is dropped.
+    // Not calling next() throws the packet away; the client's own reconnect logic decides what to do next.
+    let windowStart = Date.now();
+    let inWindow = 0;
+    socket.use((_packet, next) => {
+      const now = Date.now();
+      if (now - windowStart > FLOOD_WINDOW_MS) { windowStart = now; inWindow = 0; }
+      if (++inWindow > FLOOD_MAX_MESSAGES) {
+        console.warn(`[socket] ${socket.id} sent more than ${FLOOD_MAX_MESSAGES} messages in ${FLOOD_WINDOW_MS} ms: disconnected`);
+        socket.disconnect(true);
+        return;
+      }
+      next();
+    });
+
     // ------------------------------------------------------------------ hello
     socket.on("hello", (req: HelloRequest, ack: (a: HelloAck) => void) => {
       const reply = safeAck<HelloAck>(ack);
+      if (closed) return;
       try {
         if (!isObj(req) || !isObj(req.joinEnvelope)) return reply(reject("BAD_PAYLOAD", "hello needs {joinEnvelope, fromIndex}"));
         const tableId = req.joinEnvelope.tableId;
@@ -150,6 +174,7 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
     // --------------------------------------------------------------- envelope
     socket.on("envelope", (env, ack: (a: EnvelopeAck) => void) => {
       const reply = safeAck<EnvelopeAck>(ack);
+      if (closed) return;
       try {
         const refSeq = isObj(env) && typeof env.seq === "number" ? env.seq : 0;
         const b = binding();
@@ -169,6 +194,7 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
 
     // ------------------------------------------------------------- disconnect
     socket.on("disconnect", () => {
+      if (closed) return;
       try {
         const b = binding();
         if (b.tableId === undefined || b.seat === undefined) return;
@@ -184,5 +210,11 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
     });
   });
 
-  return { io, broadcast, onAuto, tableChanged, close: () => { void io.close(); } };
+  return {
+    io, broadcast, onAuto, tableChanged,
+    close: () => new Promise<void>(resolve => {
+      closed = true;
+      void io.close(() => resolve());
+    }),
+  };
 }
