@@ -44,16 +44,27 @@ export function newIdentity(seat: Seat, wallet?: string): BotIdentity {
  * `--seed` mode: writes a table with 4 seated AND deposited players straight into the server's database
  * (no chain). Run the server with POKER_SKIP_CHAIN=1 on the same DB_PATH. The server finds the table on the first `hello`.
  */
-export function seedTable(db: Db, o: { tableId?: string; totalHands?: number; buyInWei?: bigint } = {}) {
+export function seedTable(
+  db: Db,
+  o: { tableId?: string; totalHands?: number; buyInWei?: bigint; humanWallet?: string } = {}
+) {
   const tableId = o.tableId ?? String(Date.now()); // decimal string, like an on-chain id
   const buyInWei = o.buyInWei ?? 1_000_000_000_000_000n; // 0.001 ETH, divisible by 1000
-  const identities = ([0, 1, 2, 3] as Seat[]).map(seat => newIdentity(seat));
+  // Seat 0 is the human when humanWallet is given: that wallet, with a session key we generate here.
+  const identities = ([0, 1, 2, 3] as Seat[]).map(seat =>
+    newIdentity(seat, seat === 0 ? o.humanWallet : undefined));
   createGame(db, { tableId, creator: identities[0].wallet, buyInWei, totalHands: o.totalHands ?? 3 });
   for (const id of identities) {
     addPlayer(db, { tableId, seat: id.seat, wallet: id.wallet, sessionKey: id.sessionAddress });
     setDeposited(db, tableId, id.seat);
   }
-  return { tableId, buyInWei: buyInWei.toString(), identities };
+  return {
+    tableId,
+    buyInWei: buyInWei.toString(),
+    identities,                                            // all 4, as before (bots.test.ts uses this)
+    human: o.humanWallet ? identities[0] : null,           // seat 0 when --human was used
+    botIdentities: o.humanWallet ? identities.slice(1) : identities,
+  };
 }
 
 // ------------------------------------------------------------------------------------------------ one bot
