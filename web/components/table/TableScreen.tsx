@@ -1,5 +1,6 @@
 "use client";
 
+import LiveTable from "./LiveTable";
 import { useMemo, useState } from "react";
 import { useSocket } from "@/components/SocketProvider";
 import { useWallet } from "@/components/WalletProvider";
@@ -63,15 +64,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
 
   const banner = buildBanner(simulateLost ? "disconnected" : connection, notice);
 
-  if (!USE_MOCK) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold">Table #{tableId}</h1>
-        <StatusBanner banner={banner} />
-        <p>Live table state is connected in step 2.1.</p>
-      </div>
-    );
-  }
+    if (!USE_MOCK) return <LiveTable tableId={tableId} />;
 
   return (
     <div className="space-y-6">
