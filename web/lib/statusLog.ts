@@ -133,6 +133,12 @@ function describeEntry(row: EventRow): LogEntry | null {
         kind: "info",
         text: `Hand ${body.handNumber} started. ${seatName(body.dealerSeat)} is the dealer.`,
       };
+    case "street":
+      return {
+        id,
+        kind: "info",
+        text: `${body.street[0].toUpperCase()}${body.street.slice(1)} dealt.`,
+      };
     case "hand_settled": {
       const won = body.awards.length
         ? body.awards.map((a) => `${seatName(a.seat)} won ${a.amount}`).join(", ")
@@ -151,7 +157,7 @@ function describeEntry(row: EventRow): LogEntry | null {
 }
 
 export function buildLog(events: EventRow[]): LogEntry[] {
-  return events.map(describeEntry).filter((e): e is LogEntry => e !== null);
+  return events.map(describeEntry).filter((e): e is LogEntry => e != null);
 }
 
 // ---------- Mock data (used while NEXT_PUBLIC_USE_MOCK=true) ----------
@@ -184,21 +190,21 @@ export const MOCK_LOGS: LogEntry[][] = [
     { id: 0, kind: "info", text: "Hand 3 started. Seat 2 is the dealer." },
     { id: 1, kind: "info", text: "Cards dealt." },
     { id: 2, kind: "action", text: "Seat 3 folded." },
-    { id: 3, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
+    { id: 3, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
     { id: 4, kind: "action", text: "Seat 2 bet 20." },
   ],
   [
     { id: 0, kind: "info", text: "Hand 7 started. Seat 3 is the dealer." },
     { id: 1, kind: "action", text: "Seat 3 folded." },
-    { id: 2, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
-    { id: 3, kind: "info", text: "Turn: K♥." },
-    { id: 4, kind: "info", text: "River: 9♠." },
+    { id: 2, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
+    { id: 3, kind: "info", text: "Turn: K♥️." },
+    { id: 4, kind: "info", text: "River: 9♠️." },
   ],
   [
     { id: 0, kind: "info", text: "Hand 7 started. Seat 3 is the dealer." },
     { id: 1, kind: "action", text: "Seat 3 folded." },
-    { id: 2, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
-    { id: 3, kind: "info", text: "Turn: K♥." },
-    { id: 4, kind: "info", text: "River: 9♠." },
+    { id: 2, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
+    { id: 3, kind: "info", text: "Turn: K♥️." },
+    { id: 4, kind: "info", text: "River: 9♠️." },
   ],
 ];
