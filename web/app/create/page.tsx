@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import WalletBar from "@/components/WalletBar";
 import { useWallet } from "@/components/WalletProvider";
+import { EXPLORER_TX_URL, createTable, describeTxError } from "@/lib/contractTx";
+import { getOrCreateSessionKey, promotePendingKey } from "@/lib/sessionKey";
 import {
   BIG_BLIND,
   CHIPS_PER_PLAYER,
-  CreateTableParams,
   MAX_HANDS,
   MIN_HANDS,
   SMALL_BLIND,
@@ -15,21 +17,44 @@ import {
 } from "@/lib/createTable";
 
 export default function CreatePage() {
+  const router = useRouter();
   const { address, isWrongNetwork } = useWallet();
   const [buyIn, setBuyIn] = useState("0.001");
   const [hands, setHands] = useState("10");
-  const [draft, setDraft] = useState<CreateTableParams | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
 
   const result = parseCreateForm(buyIn, hands);
   const errors = result.ok ? {} : result.errors;
   const walletReady = !!address && !isWrongNetwork;
-  const canSubmit = result.ok && walletReady;
+  const canSubmit = result.ok && walletReady && !busy;
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!result.ok || !walletReady) return;
-    // Step 2.3 will send the real createTable transaction here.
-    setDraft(result.value);
+    if (!result.ok || !walletReady || !address || busy) return;
+    setBusy(true);
+    setTxError(null);
+    setTxHash(null);
+    try {
+      // The session key's address is registered on-chain inside this transaction.
+      const sk = getOrCreateSessionKey(address, "pending");
+      const { tableId } = await createTable(
+        {
+          buyInWei: result.value.buyInWei,
+          hands: result.value.hands,
+          sessionKey: sk.address.toLowerCase(),
+        },
+        (p) => {
+          if (p.hash) setTxHash(p.hash);
+        }
+      );
+      promotePendingKey(address, tableId); // keep the key under the real table id
+      router.push(`/table/${tableId}`);
+    } catch (err) {
+      setTxError(describeTxError(err)); // form stays editable after a reject
+      setBusy(false);
+    }
   }
 
   return (
@@ -55,7 +80,7 @@ export default function CreatePage() {
             value={buyIn}
             onChange={(e) => {
               setBuyIn(e.target.value);
-              setDraft(null);
+              setTxError(null);
             }}
             className="w-full rounded border p-2"
           />
@@ -73,7 +98,7 @@ export default function CreatePage() {
             value={hands}
             onChange={(e) => {
               setHands(e.target.value);
-              setDraft(null);
+              setTxError(null);
             }}
             className="w-full rounded border p-2"
           />
@@ -94,7 +119,7 @@ export default function CreatePage() {
           disabled={!canSubmit}
           className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
         >
-          Create table
+          {busy ? (txHash ? "Confirming…" : "Waiting for MetaMask…") : "Create table"}
         </button>
 
         {!walletReady && (
@@ -104,13 +129,25 @@ export default function CreatePage() {
         )}
       </form>
 
-      {draft && (
-        <div className="max-w-md rounded border border-green-600 p-3 text-sm">
-          <p className="font-medium">Form is valid. Ready to send to the contract.</p>
-          <p>Buy-in: {draft.buyInWei} wei</p>
-          <p>Hands: {draft.hands}</p>
-          <p className="mt-2 text-gray-600">The real transaction is added in step 2.3.</p>
-        </div>
+      {txHash && busy && (
+        <p className="max-w-md text-sm text-gray-600">
+          Transaction sent.{" "}
+          <a
+            href={`${EXPLORER_TX_URL}${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View on BaseScan
+          </a>
+          . Waiting for confirmation…
+        </p>
+      )}
+
+      {txError && (
+        <p role="alert" className="max-w-md rounded border border-red-500 p-3 text-sm text-red-600">
+          {txError}
+        </p>
       )}
     </div>
   );

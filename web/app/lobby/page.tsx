@@ -6,6 +6,8 @@ import WalletBar from "@/components/WalletBar";
 import { useWallet } from "@/components/WalletProvider";
 import { SEATS, TableSummary, USE_MOCK, fetchOpenTables } from "@/lib/lobby";
 import { weiToEth } from "@/lib/createTable";
+import { EXPLORER_TX_URL, describeTxError, joinTable } from "@/lib/contractTx";
+import { getOrCreateSessionKey } from "@/lib/sessionKey";
 
 const POLL_MS = 5000;
 
@@ -14,6 +16,9 @@ export default function LobbyPage() {
   const { address, isWrongNetwork } = useWallet();
   const [tables, setTables] = useState<TableSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
   const walletReady = !!address && !isWrongNetwork;
 
   const load = useCallback(async (isCancelled: () => boolean) => {
@@ -41,9 +46,25 @@ export default function LobbyPage() {
     };
   }, [load]);
 
-  function handleJoin(tableId: string) {
-    // Step 2.3 sends the real joinTable transaction (with the session key) before this.
-    router.push(`/table/${tableId}`);
+  async function handleJoin(tableId: string) {
+    if (!address || joiningId) return;
+    setJoiningId(tableId);
+    setTxError(null);
+    setTxHash(null);
+    try {
+      // Same key is reused if the player comes back to this table later.
+      const sk = getOrCreateSessionKey(address, tableId);
+      await joinTable(
+        { tableId, sessionKey: sk.address.toLowerCase(), wallet: address },
+        (p) => {
+          if (p.hash) setTxHash(p.hash);
+        }
+      );
+      router.push(`/table/${tableId}`);
+    } catch (e) {
+      setTxError(describeTxError(e));
+      setJoiningId(null);
+    }
   }
 
   // SPEC.md section 4: only tables in the "lobby" state (fewer than 4 seats) can be joined.
@@ -69,6 +90,27 @@ export default function LobbyPage() {
       {error && (
         <p className="rounded border border-red-500 p-3 text-sm text-red-600">
           Could not load tables: {error}
+        </p>
+      )}
+
+      {txHash && joiningId && (
+        <p className="text-sm text-gray-600">
+          Transaction sent.{" "}
+          <a
+            href={`${EXPLORER_TX_URL}${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View on BaseScan
+          </a>
+          . Waiting for confirmation…
+        </p>
+      )}
+
+      {txError && (
+        <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">
+          {txError}
         </p>
       )}
 
@@ -106,10 +148,10 @@ export default function LobbyPage() {
               ) : (
                 <button
                   onClick={() => handleJoin(t.tableId)}
-                  disabled={full || !walletReady}
+                  disabled={full || !walletReady || joiningId !== null}
                   className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
                 >
-                  {full ? "Full" : "Join"}
+                  {joiningId === t.tableId ? "Joining…" : full ? "Full" : "Join"}
                 </button>
               )}
             </li>

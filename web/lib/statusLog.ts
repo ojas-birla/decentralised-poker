@@ -1,12 +1,7 @@
 export type ConnectionState = "mock" | "connecting" | "connected" | "disconnected";
 
-// Mirrors SPEC.md section 1 (AbortReason). Replace with an import from
-// "@poker/shared" once it exists.
-export type AbortReason =
-  | "CRYPTO_STALL"
-  | "BAD_REVEAL"
-  | "DUPLICATE_CARD"
-  | "PLAYER_ABANDONED";
+import type { AbortReason } from "@poker/shared";
+export type { AbortReason };
 
 // One line in the feed. `id` is the event log index, so keys stay stable.
 export interface LogEntry {
