@@ -2,9 +2,9 @@
 // SPEC-PHASE3 section 2 (steps 5, 8, 10): the pure bridge between the crypto event log and the engine.
 // applyCrypto(state, events) returns the next state if the hand can move forward, or null if nothing changed.
 import type { EventRow } from "../protocol";
-import { boardCard, deriveDealing, unlockOrder, type DealingView } from "../crypto/dealingView";
+import { boardCard, deriveDealing, unlockOrder, verifyAllReveals, type DealingView } from "../crypto/dealingView";
 import { abortHand } from "./abort";
-import { provideBoardCards } from "./streets";
+import { provideBoardCards, resolveShowdown, revealHoleCards } from "./streets";
 import type { GameState, Seat } from "./types";
 
 /** SPEC-PHASE3 D2. A folded player is still inHand, so folded players keep unlocking board cards. */
@@ -52,8 +52,27 @@ export function applyCrypto(state: GameState, events: readonly EventRow[]): Game
       if ("error" in r) return abortOrNull(state, "DUPLICATE_CARD"); // a card repeated on the board
       return r;
     }
-    case "showdown": // step 10 (C-3b, commit 8)
-      return null;
+    case "showdown": { // step 10: verify every reveal, then pay out
+      const live = state.seats.filter(p => p.inHand && !p.hasFolded).map(p => p.seat);
+      if (live.length < 2) return null;
+      const check = verifyAllReveals({
+        view, tableId: state.tableId, hand: state.handNumber, dealer: state.dealerSeat,
+        activeSeats: active, revealSeats: live,
+      });
+      if (!check.ok) {
+        if (check.reason === "PENDING") return null; // some live seat has not revealed yet
+        return abortOrNull(state, check.reason);     // BAD_REVEAL or DUPLICATE_CARD
+      }
+      let s: GameState = state;
+      for (const seat of live) {
+        const r = revealHoleCards(s, seat, check.hands[seat]);
+        if ("error" in r) return abortOrNull(state, "BAD_REVEAL");
+        s = r;
+      }
+      const done = resolveShowdown(s);
+      if ("error" in done) return abortOrNull(state, "BAD_REVEAL");
+      return done;
+    }
     default:
       return null;
   }

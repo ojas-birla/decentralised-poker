@@ -9,6 +9,7 @@ import { openDb, type Db } from "./db";
 import { addPlayer, createGame, getPlayer, setDeposited } from "./store";
 import type { IngestDeps } from "./ingest";
 import { attachSockets, type SocketLayer } from "./socket";
+process.env.POKER_DEV_DECK = "1"; // bots still rely on server dealing; remove when C-8 (bots use the real shuffle) lands
 
 type Client = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
 interface Bot {

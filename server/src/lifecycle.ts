@@ -1,14 +1,16 @@
 // server/src/lifecycle.ts
 // SPEC-2.1 §7 C5: moves a table through ready -> hand -> showdown -> settlement -> next hand -> finished.
-// Phase 2 only: the server deals a crypto-random deck (dev safety net, replaced in Phase 3).
+// Phase 3: the hand is dealt by the padlock shuffle (applyCrypto consumes the crypto log).
+// Phase 2 dev deck: the server deals a crypto-random deck when POKER_DEV_DECK=1, deps.devDeck, or deps.randomDeck is set.
 //
 // afterChange() is idempotent: every step checks the current tableState first, so calling it twice is harmless.
 // Call it after ANYTHING that changed a table: an accepted envelope, an auto action, a chain event, a restart.
 import { randomInt } from "node:crypto";
-import { advanceStreet, resolveShowdown, startHand } from "@poker/shared";
-import type { GameState } from "@poker/shared";
+import { advanceStreet, applyCrypto, resolveShowdown, startHand } from "@poker/shared";
+import type { EventRow, GameState } from "@poker/shared";
 import type { Db } from "./db";
-import { appendEvent, getPlayers, loadGame, saveState } from "./store";
+import { devDeckEnabled } from "./env";
+import { appendEvent, getEvents, getPlayers, loadGame, saveState } from "./store";
 import { logStreets } from "./streetLog";
 import { getTimer, syncTurnTimer } from "./timers";
 
@@ -16,11 +18,13 @@ import { getTimer, syncTurnTimer } from "./timers";
 export type LifecycleLog =
   | { kind: "table_state"; state: GameState["tableState"] }
   | { kind: "hand_started"; handNumber: number; dealerSeat: number }
-  | { kind: "hand_settled"; handNumber: number; awards: GameState["awards"] };
+  | { kind: "hand_settled"; handNumber: number; awards: GameState["awards"] }
+  | { kind: "abort"; handNumber: number; reason: NonNullable<GameState["aborted"]>["reason"] };
 
 export interface LifecycleDeps {
-  /** Tests inject a fixed deck. Production uses randomDeck(). */
+  /** Tests inject a fixed deck. Giving this (or devDeck, or POKER_DEV_DECK=1) selects the Phase 2 dev deck. */
   randomDeck?: () => number[];
+  devDeck?: boolean;
   now?: () => number;
 }
 
@@ -66,11 +70,25 @@ const startedLog = (s: GameState): LifecycleLog =>
     ? { kind: "table_state", state: "finished" }
     : { kind: "hand_started", handNumber: s.handNumber, dealerSeat: s.dealerSeat };
 
-/** Does one transition. Returns true if something changed (so the caller loops again). */
-function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number): boolean {
+/**
+ * Does one transition. Returns true if something changed (so the caller loops again).
+ * makeDeck === null means Phase 3: the real padlock shuffle, no server deck.
+ */
+function stepOnce(db: Db, tableId: string, makeDeck: (() => number[]) | null, now: number): boolean {
   const game = loadGame(db, tableId);
   if (!game) return false;
   const s = game.state;
+
+  // Phase 3: let the pure engine consume the crypto log first (SPEC-PHASE3 section 2, steps 5, 8, 10).
+  if (s.deck === null && (s.tableState === "dealing" || s.tableState === "betting" || s.tableState === "showdown")) {
+        const next = applyCrypto(s, getEvents(db, tableId) as unknown as readonly EventRow[]);
+    if (next !== null) {
+      const logs: LifecycleLog[] = [];
+      if (next.aborted && !s.aborted) logs.push({ kind: "abort", handNumber: next.handNumber, reason: next.aborted.reason });
+      commit(db, tableId, next, logs, now);
+      return true;
+    }
+  }
 
   switch (s.tableState) {
     case "waiting_deposits": {
@@ -85,16 +103,17 @@ function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number
     }
 
     case "ready": {
-      const r = startHand(s, makeDeck());
+      const r = makeDeck ? startHand(s, makeDeck()) : startHand(s);
       if ("error" in r) { console.error(`[lifecycle] startHand failed on table ${tableId}: ${r.error}`); return false; }
       commit(db, tableId, r, [startedLog(r)], now);
       return true;
     }
 
     case "betting": {
-      // Betting is closed from the start (everyone all-in from the blinds): run the streets out.
-      // Only Phase 2: with no dev deck (Phase 3) the engine waits for unlocks instead.
-      if (s.toActSeat !== null || s.deck === null) return false;
+      // Betting is closed from the start (everyone all-in): run the streets out.
+      // Phase 3: only when no unlock is pending. While needsCards is set, applyCrypto above is waiting for unlocks.
+      if (s.toActSeat !== null) return false;
+      if (s.deck === null && s.needsCards !== null) return false;
       const next = advanceStreet(s);
       logStreets(db, tableId, s, next, now);
       commit(db, tableId, next, [], now);
@@ -102,7 +121,8 @@ function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number
     }
 
     case "showdown": {
-      const r = resolveShowdown(s); // Phase 2: hole cards already exist, nothing to reveal
+      if (s.deck === null) return false; // Phase 3: applyCrypto above waits for the reveals
+      const r = resolveShowdown(s);      // Phase 2: hole cards already exist, nothing to reveal
       if ("error" in r) { console.error(`[lifecycle] resolveShowdown failed on table ${tableId}: ${r.error}`); return false; }
       commit(db, tableId, r, [], now);
       return true;
@@ -124,7 +144,7 @@ function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number
         commit(db, tableId, next, [{ kind: "table_state", state: "finished" }], now);
         return true;
       }
-      const r = startHand(s, makeDeck()); // settlement -> betting, or finished if fewer than 2 seats have chips
+      const r = makeDeck ? startHand(s, makeDeck()) : startHand(s); // settlement -> next hand, or finished if fewer than 2 seats have chips
       if ("error" in r) { console.error(`[lifecycle] startHand failed on table ${tableId}: ${r.error}`); return false; }
       commit(db, tableId, r, [startedLog(r)], now);
       return true;
@@ -137,7 +157,8 @@ function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number
 
 /** Runs transitions until nothing changes. Returns true if the table changed at all. */
 export function afterChange(db: Db, tableId: string, deps: LifecycleDeps = {}): boolean {
-  const makeDeck = deps.randomDeck ?? randomDeck;
+  const useDevDeck = deps.randomDeck !== undefined || deps.devDeck === true || devDeckEnabled();
+  const makeDeck = useDevDeck ? (deps.randomDeck ?? randomDeck) : null;
   let changed = false;
   for (let guard = 0; guard < 20; guard++) { // a hand never needs more than a handful of steps
     const now = deps.now ? deps.now() : Date.now();

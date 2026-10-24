@@ -6,6 +6,7 @@ import { openDb } from "./db";
 import { loadGame } from "./store";
 import { startGameServer, type GameServer } from "./gameServer";
 import { seedTable, startBots } from "../scripts/botsLib";
+process.env.POKER_DEV_DECK = "1"; // bots still rely on server dealing; remove when C-8 (bots use the real shuffle) lands
 
 const origins = ["http://localhost:3000"];
 const open: GameServer[] = [];

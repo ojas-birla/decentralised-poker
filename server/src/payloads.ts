@@ -13,6 +13,8 @@ const HASH32 = /^0x[0-9a-fA-F]{64}$/;
 const SIG65 = /^0x[0-9a-fA-F]{130}$/;
 
 const isHex32 = (v: unknown): v is string => typeof v === "string" && POINT_OR_SCALAR.test(v);
+/** commitPadlock() (Person B) returns "0x" + keccak256 hex. Accept it with or without the 0x. */
+const COMMITMENT = /^(0x)?[0-9a-fA-F]{64}$/;
 
 export function validatePayload(type: MessageType, payload: unknown, senderSeat: number): boolean {
   if (!isObj(payload)) return false;
@@ -21,8 +23,8 @@ export function validatePayload(type: MessageType, payload: unknown, senderSeat:
       return typeof payload.sessionKey === "string" && ADDRESS.test(payload.sessionKey);
     case "ready":
       return payload.ready === true;
-    case "commit_padlock":
-      return isHex32(payload.commitment);
+        case "commit_padlock":
+      return typeof payload.commitment === "string" && COMMITMENT.test(payload.commitment);
     case "shuffle_step":
       // step = the sender's INDEX in the active-seat order, not the seat number (SPEC-PHASE3 D3).
       // Whether it is this sender's turn is a game rule: cryptoCheck.ts decides that.
