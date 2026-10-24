@@ -1,190 +1,154 @@
 import { describe, expect, it } from "vitest";
-import type { GameState, PlayerPresence, Seat } from "@poker/shared";
-import { cardName } from "@poker/shared/engine/cards";
+import { applyAction, cardName, legalActions, resolveShowdown, startHand } from "@poker/shared";
+import type { ActionType, GameState, PlayerPresence, PlayerState, Seat } from "@poker/shared";
 import { chipsAddUp, toBetPayload, toTableView } from "./gameToView";
 
-type Player = GameState["seats"][number];
+const mk = (i: number): PlayerState => ({
+  seat: i as Seat, wallet: "0x" + String(i).repeat(40), sessionKey: "0xk" + i, chips: 1000,
+  inHand: false, hasFolded: false, isAllIn: false, committedThisStreet: 0, committedThisHand: 0,
+  hasActedThisStreet: false, evicted: false, connected: true,
+});
+const base = (): GameState => ({
+  tableId: "1", tableState: "ready", handNumber: 0, checkpointNumber: 0,
+  seats: [mk(0), mk(1), mk(2), mk(3)], dealerSeat: 0, blinds: { small: 5, big: 10 }, board: [],
+  holeCards: [[], [], [], []], pots: [], awards: [], toActSeat: null, currentBet: 0,
+  lastRaiseSize: 10, street: "preflop", deck: null, needsCards: null,
+});
+const deck = Array.from({ length: 52 }, (_, i) => i);
 
-function player(seat: Seat, over: Partial<Player> = {}): Player {
-  return {
-    seat,
-    wallet: "0x" + String(seat + 1).repeat(40),
-    sessionKey: "0x" + String(seat + 5).repeat(40),
-    chips: 1000,
-    inHand: true,
-    hasFolded: false,
-    isAllIn: false,
-    committedThisStreet: 0,
-    committedThisHand: 0,
-    hasActedThisStreet: false,
-    evicted: false,
-    connected: true,
-    ...over,
-  };
+function ok(r: GameState | { error: string }): GameState {
+  if ("error" in r) throw new Error("engine error: " + r.error);
+  return r;
+}
+const act = (s: GameState, seat: number, type: ActionType, amount?: number) =>
+  ok(applyAction(s, seat as Seat, { type, amount }));
+
+// Mirrors server publicState(): no deck, only my hole cards, plus live seats at a real showdown.
+function seenBy(state: GameState, seat: Seat): GameState {
+  const s = structuredClone(state);
+  s.deck = null;
+  const live = (i: number) => s.seats[i].inHand && !s.seats[i].hasFolded;
+  const showdown =
+    (s.tableState === "showdown" || s.tableState === "settlement") &&
+    s.seats.filter((_, i) => live(i)).length >= 2;
+  s.holeCards = s.holeCards.map((c, i) => (i === seat || (showdown && live(i)) ? c : [])) as GameState["holeCards"];
+  return s;
 }
 
-function makeState(seats: GameState["seats"], over: Partial<GameState> = {}): GameState {
-  return {
-    tableId: "7",
-    tableState: "betting",
-    handNumber: 1,
-    checkpointNumber: 0,
-    seats,
-    dealerSeat: 0,
-    blinds: { small: 5, big: 10 },
-    board: [],
-    holeCards: [[], [], [], []],
-    pots: [],
-    awards: [],
-    toActSeat: null,
-    currentBet: 0,
-    lastRaiseSize: 10,
-    street: "preflop",
-    deck: null,
-    needsCards: null,
-    ...over,
-  };
-}
+const present = (connected = [true, true, true, true]): PlayerPresence[] =>
+  [0, 1, 2, 3].map((seat) => ({ seat: seat as Seat, wallet: mk(seat).wallet, connected: connected[seat] }));
 
-const NO_PLAYERS: PlayerPresence[] = [];
-
-// Preflop, blinds posted, seat 3 to act. What a client at seat 3 receives (only its own cards).
-function preflop(): GameState {
-  return makeState(
-    [
-      player(0),
-      player(1, { chips: 995, committedThisStreet: 5, committedThisHand: 5 }),
-      player(2, { chips: 990, committedThisStreet: 10, committedThisHand: 10 }),
-      player(3),
-    ],
-    {
-      toActSeat: 3,
-      currentBet: 10,
-      holeCards: [[], [], [], [6, 7]],
-    }
-  );
-}
+const input = (state: GameState, mySeat: Seat | null, extra: Partial<Parameters<typeof toTableView>[0]> = {}) => ({
+  state: mySeat === null ? state : seenBy(state, mySeat),
+  mySeat,
+  players: present(),
+  timer: null,
+  totalHands: 3,
+  ...extra,
+});
 
 describe("toTableView", () => {
-  it("preflop with blinds: bets are in front, pot is 0, chips add up to 4000", () => {
-    const view = toTableView({ state: preflop(), mySeat: 3, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.pot).toBe(0);
-    expect(view.seats[1].currentBet).toBe(5);
-    expect(view.seats[2].currentBet).toBe(10);
-    expect(chipsAddUp(view)).toBe(true);
-    expect(view.totalHands).toBe(10);
-    expect(view.turnSeat).toBe(3);
+  it("start of hand, my turn: legal actions, own cards, deadline, chip invariant", () => {
+    const s = ok(startHand(base(), deck));
+    const v = toTableView(input(s, 0, { timer: { seat: 0, deadline: 123456 } }));
+    expect(v.state).toBe("betting");
+    expect(v.turnSeat).toBe(0);
+    expect(v.turnDeadlineMs).toBe(123456);
+    expect(v.pot).toBe(0);
+    expect(v.legal).toEqual({ toCall: 10, canCheck: false, minRaiseTo: 20, maxRaiseTo: 1000 });
+    expect(v.myHole).toEqual([cardName(s.holeCards[0][0]), cardName(s.holeCards[0][1])]);
+    expect(v.seats[2].currentBet).toBe(5);
+    expect(v.seats[3].currentBet).toBe(10);
+    expect(v.seats[1].isDealer).toBe(true);
+    expect(chipsAddUp(v)).toBe(true);
   });
 
-  it("shows only my own hole cards and reveals nothing before showdown", () => {
-    const view = toTableView({ state: preflop(), mySeat: 3, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.myHole).toEqual([cardName(6), cardName(7)]);
-    expect(view.seats.every((s) => s.revealed === undefined)).toBe(true);
+  it("not my turn: no legal actions, no deadline for someone else's clock, no foreign cards", () => {
+    const s = ok(startHand(base(), deck));
+    const v = toTableView(input(s, 3, { timer: { seat: 1, deadline: 999 } }));
+    expect(v.legal).toBeNull();
+    expect(v.turnSeat).toBe(0);
+    expect(v.turnDeadlineMs).toBeNull();
+    expect(v.myHole).not.toBeNull();
+    expect(v.seats.every((p) => p.revealed === undefined)).toBe(true);
   });
 
-  it("gives legal actions only on my turn (facing the big blind)", () => {
-    const mine = toTableView({ state: preflop(), mySeat: 3, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(mine.legal).not.toBeNull();
-    expect(mine.legal?.canCheck).toBe(false);
-    expect(mine.legal?.toCall).toBe(10);
-    expect(mine.legal?.minRaiseTo).toBe(20);
-    expect(mine.legal?.maxRaiseTo).toBe(1000);
-
-    const other = toTableView({ state: preflop(), mySeat: 0, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(other.legal).toBeNull();
+  it("without a seat: no hole cards, no legal actions", () => {
+    const s = ok(startHand(base(), deck));
+    const v = toTableView({ state: seenBy(s, 0), mySeat: null, players: present(), timer: null, totalHands: 3 });
+    expect(v.myHole).toBeNull();
+    expect(v.legal).toBeNull();
   });
 
-  it("counts chips committed on earlier streets in the pot", () => {
-    const state = makeState(
-      [
-        player(0, { chips: 980, committedThisHand: 20 }),
-        player(1, { chips: 980, committedThisHand: 20 }),
-        player(2, { chips: 990, committedThisHand: 10, hasFolded: true, inHand: false }),
-        player(3),
-      ],
-      { street: "flop", board: [0, 1, 2], toActSeat: 0, holeCards: [[8, 9], [], [], []] }
-    );
-    const view = toTableView({ state, mySeat: 0, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.pot).toBe(50);
-    expect(view.board).toEqual([cardName(0), cardName(1), cardName(2)]);
-    expect(view.seats[2].folded).toBe(true);
-    expect(chipsAddUp(view)).toBe(true);
+  it("pot only counts chips from earlier streets; board is named", () => {
+    let s = ok(startHand(base(), deck));
+    s = act(s, 0, "call"); s = act(s, 1, "call"); s = act(s, 2, "call"); s = act(s, 3, "check");
+    let v = toTableView(input(s, 2));
+    expect(v.pot).toBe(40);
+    expect(v.board).toEqual(s.board.map(cardName));
+    expect(v.board).toHaveLength(3);
+    expect(chipsAddUp(v)).toBe(true);
+
+    const l = legalActions(s, 2)!;
+    s = act(s, 2, "raise", l.minRaiseTo);
+    v = toTableView(input(s, 2));
+    expect(v.seats[2].currentBet).toBe(l.minRaiseTo);
+    expect(v.pot).toBe(40);
+    expect(chipsAddUp(v)).toBe(true);
   });
 
-  it("heads-up all-in: busted seats flagged, call is exactly my stack", () => {
-    const state = makeState(
-      [
-        player(0, { chips: 0, isAllIn: true, committedThisStreet: 2000, committedThisHand: 2000 }),
-        player(1, { chips: 0, inHand: false }),
-        player(2, { chips: 2000 }),
-        player(3, { chips: 0, inHand: false }),
-      ],
-      { toActSeat: 2, currentBet: 2000, holeCards: [[], [], [20, 21], []] }
-    );
-    const view = toTableView({ state, mySeat: 2, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.seats[0].allIn).toBe(true);
-    expect(view.seats[0].busted).toBe(false);
-    expect(view.seats[0].stack).toBe(0);
-    expect(view.seats[0].currentBet).toBe(2000);
-    expect(view.seats[1].busted).toBe(true);
-    expect(view.seats[3].busted).toBe(true);
-    expect(view.legal?.toCall).toBe(2000);
-    expect(view.legal?.canCheck).toBe(false);
-    expect(chipsAddUp(view)).toBe(true);
+  it("heads-up: dealer is small blind and acts first; busted seats are flagged", () => {
+    const b = base();
+    b.seats[0].chips = 2000; b.seats[1].chips = 2000; b.seats[2].chips = 0; b.seats[3].chips = 0;
+    const s = ok(startHand(b, deck));
+    expect(s.toActSeat).toBe(1);
+    const v = toTableView(input(s, 1));
+    expect(v.legal).toEqual({ toCall: 5, canCheck: false, minRaiseTo: 20, maxRaiseTo: 2000 });
+    expect(v.seats[2].busted).toBe(true);
+    expect(v.seats[3].busted).toBe(true);
+    expect(chipsAddUp(v)).toBe(true);
   });
 
-  it("showdown: reveals cards of non-folded seats only, no turn, no legal actions", () => {
-    const state = makeState(
-      [
-        player(0, { chips: 900, committedThisHand: 100 }),
-        player(1, { chips: 900, committedThisHand: 100 }),
-        player(2, { hasFolded: true, inHand: false }),
-        player(3, { hasFolded: true, inHand: false }),
-      ],
-      {
-        tableState: "showdown",
-        street: "showdown",
-        board: [0, 1, 2, 3, 4],
-        holeCards: [[10, 11], [12, 13], [], []],
-        toActSeat: null,
-      }
-    );
-    const view = toTableView({ state, mySeat: 0, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.seats[0].revealed).toEqual([cardName(10), cardName(11)]);
-    expect(view.seats[1].revealed).toEqual([cardName(12), cardName(13)]);
-    expect(view.seats[2].revealed).toBeUndefined();
-    expect(view.seats[3].revealed).toBeUndefined();
-    expect(view.turnSeat).toBeNull();
-    expect(view.turnDeadlineMs).toBeNull();
-    expect(view.legal).toBeNull();
-    expect(view.pot).toBe(200);
-    expect(chipsAddUp(view)).toBe(true);
+  it("everyone all-in: showdown reveals every live seat, then settlement keeps 4000 chips", () => {
+    let s = ok(startHand(base(), deck));
+    s = act(s, 0, "allin"); s = act(s, 1, "allin"); s = act(s, 2, "allin"); s = act(s, 3, "allin");
+    expect(s.tableState).toBe("showdown");
+    let v = toTableView(input(s, 0));
+    expect(chipsAddUp(v)).toBe(true);
+    v.seats.forEach((p, i) => {
+      expect(p.allIn).toBe(true);
+      expect(p.revealed).toEqual([cardName(s.holeCards[i][0]), cardName(s.holeCards[i][1])]);
+    });
+
+    s = ok(resolveShowdown(s));
+    expect(s.tableState).toBe("settlement");
+    v = toTableView(input(s, 0));
+    expect(v.pot).toBe(0);
+    expect(v.seats.reduce((n, p) => n + p.stack, 0)).toBe(4000);
+    expect(chipsAddUp(v)).toBe(true);
   });
 
-  it("uses the timer only when it belongs to the seat that must act", () => {
-    const base = { state: preflop(), mySeat: 3 as Seat, players: NO_PLAYERS, totalHands: 10 };
-    expect(toTableView({ ...base, timer: { seat: 3, deadline: 12345 } }).turnDeadlineMs).toBe(12345);
-    expect(toTableView({ ...base, timer: { seat: 1, deadline: 12345 } }).turnDeadlineMs).toBeNull();
-    expect(toTableView({ ...base, timer: null }).turnDeadlineMs).toBeNull();
+  it("uncontested win: folded seats never show cards", () => {
+    let s = ok(startHand(base(), deck));
+    s = act(s, 0, "fold"); s = act(s, 1, "fold"); s = act(s, 2, "fold");
+    expect(s.tableState).toBe("settlement");
+    const v = toTableView(input(s, 3));
+    expect([0, 1, 2].every((i) => v.seats[i].revealed === undefined)).toBe(true);
+    expect(v.seats[3].stack).toBe(1005);
+    expect(chipsAddUp(v)).toBe(true);
   });
 
-  it("takes connected from presence when known, from the state otherwise", () => {
-    const players: PlayerPresence[] = [{ seat: 1, wallet: "0x" + "2".repeat(40), connected: false }];
-    const view = toTableView({ state: preflop(), mySeat: 3, players, timer: null, totalHands: 10 });
-    expect(view.seats[1].connected).toBe(false);
-    expect(view.seats[0].connected).toBe(true);
-  });
-
-  it("works for a seat that is not mine / not seated", () => {
-    const view = toTableView({ state: preflop(), mySeat: null, players: NO_PLAYERS, timer: null, totalHands: 10 });
-    expect(view.mySeat).toBeNull();
-    expect(view.myHole).toBeNull();
-    expect(view.legal).toBeNull();
+  it("presence overrides the seat's own connected flag; falls back to it when absent", () => {
+    const s = ok(startHand(base(), deck));
+    const v = toTableView(input(s, 0, { players: present([true, true, false, true]) }));
+    expect(v.seats.map((p) => p.connected)).toEqual([true, true, false, true]);
+    const w = toTableView(input(s, 0, { players: [] }));
+    expect(w.seats.every((p) => p.connected)).toBe(true);
   });
 });
 
 describe("toBetPayload", () => {
-  it("maps UI actions to bet_action payloads", () => {
+  it("maps UI actions to bet_action payloads (raiseTo = total bet this street)", () => {
     expect(toBetPayload({ type: "fold" })).toEqual({ action: "fold" });
     expect(toBetPayload({ type: "check" })).toEqual({ action: "check" });
     expect(toBetPayload({ type: "call" })).toEqual({ action: "call" });
