@@ -60,6 +60,8 @@ const MESSAGE_TYPES: readonly MessageType[] = [
   "bet_action", "reveal_padlock", "checkpoint_sig", "abandon_vote",
 ];
 
+const PHASE3_ONLY: readonly MessageType[] = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock", "abandon_vote"];
+
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v);
@@ -124,6 +126,12 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
   // Rule 5: type allowed in the current table state.
   if (!isMessageAllowed(state.tableState, env.type)) {
     return fail("WRONG_STATE", `${env.type} is not allowed in state ${state.tableState}`);
+  }
+
+  // C8 (Phase 2 only): while the server deals (state.deck is set) the padlock and abandon messages mean nothing.
+  // Accepting them would let one client fill the log that every reconnect replays. Phase 3 has no dev deck: guard ends.
+  if (state.deck !== null && PHASE3_ONLY.includes(env.type)) {
+    return fail("WRONG_STATE", `${env.type} is not used while the server deals`);
   }
 
   // Rule 6: payload schema, then the engine.

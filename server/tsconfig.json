@@ -10,6 +10,6 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*.ts", "vitest.config.ts", "../shared/pokersolver.d.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "vitest.config.ts", "../shared/pokersolver.d.ts"],
   "exclude": ["node_modules"]
 }
