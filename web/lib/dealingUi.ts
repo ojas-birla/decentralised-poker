@@ -25,25 +25,19 @@ export function dealingBanner(d: DealingUi, activePlayers = 4): Banner | null {
   if (d.error) {
     return { level: "error", text: `Dealing problem: ${d.error}` };
   }
+  // waitingFor is null when we are waiting on nobody, or on ourselves (useDealing).
+  const wait = d.waitingFor === null ? "" : ` Waiting for seat ${d.waitingFor + 1}.`;
   switch (d.dealingPhase) {
     case "committing":
+      return { level: "info", text: `Locking in padlocks.${wait}` };
+    case "shuffling":
+      // shuffleStep = players already done (confirmed from B's useDealing)
       return {
         level: "info",
-        text: `Locking in padlocks. Waiting for ${seatLabel(d.waitingFor)}.`,
+        text: `Shuffling the deck: ${d.shuffleStep} of ${activePlayers} players done.${wait}`,
       };
-    case "shuffling": {
-      // If B says shuffleStep is the current player's number, change `done` only.
-      const done = d.shuffleStep;
-      return {
-        level: "info",
-        text: `Shuffling the deck: ${done} of ${activePlayers} players done. Waiting for ${seatLabel(d.waitingFor)}.`,
-      };
-    }
     case "unlocking":
-      return {
-        level: "info",
-        text: `Dealing cards. Waiting for ${seatLabel(d.waitingFor)} to unlock.`,
-      };
+      return { level: "info", text: `Dealing cards.${wait}` };
     default:
       return null;
   }

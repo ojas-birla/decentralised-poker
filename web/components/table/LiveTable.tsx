@@ -9,6 +9,8 @@ import { useWallet } from "@/components/WalletProvider";
 import { useTable, type TablePhase } from "@/hooks/useTable";
 import { useTableInfo, type TableInfo } from "@/hooks/useTableInfo";
 import { useAutoMessages } from "@/hooks/useAutoMessages";
+import { useDealing } from "@/hooks/useDealing";
+import { busyLabel, dealingBanner } from "@/lib/dealingUi";
 import { useLastResult } from "@/hooks/useLastResult";
 import { toBetPayload, toTableView } from "@/lib/gameToView";
 import { disconnectedTurnNotice } from "@/lib/turnNotice";
@@ -106,11 +108,12 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   const { connection } = useSocket();
   const session = useTable(tableId);
   const info = useTableInfo(tableId);
-  const { checkpointError } = useAutoMessages({
+    const { checkpointError } = useAutoMessages({
     tableId,
     session,
     buyInWei: info?.buyInWei ?? null,
   });
+  const dealing = useDealing({ tableId, session });
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { phase, state, mySeat, players, timer, events, abort, pending, send } = session;
@@ -129,7 +132,10 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   // A server that is down shows up as connection === "disconnected" even before any phase change.
   const conn: ConnectionState =
     connection === "disconnected" ? "disconnected" : connectionFor(phase);
-  const banner = buildBanner(conn, notice);
+  const activeCount = state ? state.seats.filter((p) => p.inHand).length : 4;
+  const banner =
+    buildBanner(connectionFor(phase), notice) ?? dealingBanner(dealing, activeCount);
+
 
   const header = <h1 className="text-2xl font-bold">Table #{tableId}</h1>;
 
@@ -253,6 +259,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
     players,
     timer,
     totalHands: info?.totalHands ?? 0,
+    myCards: dealing.myCards,
   });
 
   // Buy-in numbers for the Escrow & Funds panel. Each of the 4 players put in the same buy-in.
@@ -265,6 +272,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
       : null;
 
   return (
+<<<<<<< HEAD
     <PokerTable
       view={view}
       log={log}
@@ -288,5 +296,26 @@ export default function LiveTable({ tableId }: { tableId: string }) {
         </>
       }
     />
+=======
+    <div className="space-y-3">
+      {lastResult.visible && lastResult.result && (
+        <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
+      )}
+            <PokerTable
+        view={view}
+        log={log}
+        banner={banner}
+        pending={pending}
+        busy={busyLabel(dealing)}
+        onAction={onAction}
+      />
+      {pending && <p className="text-sm text-gray-600">Sending…</p>}
+      {actionError && (
+        <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">
+          {actionError}
+        </p>
+      )}
+    </div>
+>>>>>>> 9def8d8 (web: wire useDealing into LiveTable)
   );
 }
