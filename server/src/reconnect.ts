@@ -36,12 +36,21 @@ export type ReconnectResult =
 
 /**
  * What a client may see. The Phase 2 dev deck must never reach a client, and other players' hole cards stay hidden.
- * (Showdown reveals arrive through reveal_padlock events in Phase 3, not through this snapshot.)
+ *
+ * Exception (SPEC-2.1 §4.1): once the table is in `showdown` or `settlement` AND the hand really went to a showdown
+ * (2+ seats still live = in the hand and not folded), the hole cards of those live seats are shown to everyone.
+ * Folded seats stay hidden, and so does everything after an uncontested win (only 1 live seat).
+ * `startHand` resets hasFolded/inHand, so the exception ends as soon as the next hand is dealt.
  */
 export function publicState(state: GameState, seat: Seat): GameState {
   const s = structuredClone(state);
   s.deck = null;
-  s.holeCards = s.holeCards.map((cards, i) => (i === seat ? cards : [])) as GameState["holeCards"];
+  const live = (i: number) => s.seats[i].inHand && !s.seats[i].hasFolded;
+  const wentToShowdown =
+    (s.tableState === "showdown" || s.tableState === "settlement") && s.seats.filter((_, i) => live(i)).length >= 2;
+  s.holeCards = s.holeCards.map((cards, i) =>
+    i === seat || (wentToShowdown && live(i)) ? cards : []
+  ) as GameState["holeCards"];
   return s;
 }
 

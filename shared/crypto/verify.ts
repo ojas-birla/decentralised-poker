@@ -5,8 +5,8 @@ import {
   commitPadlock,
   unlockCard,
   type Padlock,
-} from './padlock.ts';
-import { CARD_POINTS, POINT_TO_INDEX } from './cards.ts';
+} from './padlock';
+import { CARD_POINTS, POINT_TO_INDEX } from './cards';
 
 export type RevealFailure =
   | 'BAD_COMMITMENT' // padlock does not match the published commitment

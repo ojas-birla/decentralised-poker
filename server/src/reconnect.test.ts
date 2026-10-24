@@ -63,6 +63,57 @@ describe("reconnect", () => {
     expect(s.deck).not.toBeNull(); // the original is untouched
   });
 
+  describe("publicState at showdown (SPEC-2.1 §4.1)", () => {
+    const base = (db: Db) => { setup(db); return loadGame(db, T)!.state; };
+    const hidden = (s: GameState, viewer: Seat, owner: number) => publicState(s, viewer).holeCards[owner];
+
+    it("shows non-folded seats' hole cards to everyone at showdown and settlement, never the deck", () => {
+      const s = base(openDb());
+      s.seats[2].hasFolded = true; // seats 0, 1, 3 reach showdown
+      for (const tableState of ["showdown", "settlement"] as const) {
+        s.tableState = tableState;
+        const v = publicState(s, 0);
+        expect(v.deck).toBeNull();
+        expect(v.holeCards[0]).toEqual(s.holeCards[0]);
+        expect(v.holeCards[1]).toEqual(s.holeCards[1]);
+        expect(v.holeCards[3]).toEqual(s.holeCards[3]);
+        expect(v.holeCards[2]).toEqual([]); // folded: still hidden
+      }
+    });
+
+    it("keeps a folded viewer's own cards visible but still hides other folded seats", () => {
+      const s = base(openDb());
+      s.tableState = "showdown";
+      s.seats[1].hasFolded = true;
+      s.seats[2].hasFolded = true;
+      expect(hidden(s, 2, 2)).toEqual(s.holeCards[2]); // own cards, always
+      expect(hidden(s, 2, 1)).toEqual([]);             // someone else's folded cards
+      expect(hidden(s, 2, 0)).toEqual(s.holeCards[0]);
+    });
+
+    it("hides everything after an uncontested win (only 1 live seat)", () => {
+      const s = base(openDb());
+      s.tableState = "settlement";
+      [1, 2, 3].forEach(i => { s.seats[i].hasFolded = true; });
+      expect([1, 2, 3].every(i => hidden(s, 0, i).length === 0)).toBe(true);
+      expect(hidden(s, 1, 0)).toEqual([]); // the winner's cards stay hidden from others too
+    });
+
+    it("does not reveal during betting, even with 2+ live seats", () => {
+      const s = base(openDb());
+      expect(s.tableState).toBe("betting");
+      expect([1, 2, 3].every(i => hidden(s, 0, i).length === 0)).toBe(true);
+    });
+
+    it("does not mutate the stored state", () => {
+      const s = base(openDb());
+      s.tableState = "showdown";
+      publicState(s, 0);
+      expect(s.deck).not.toBeNull();
+      expect(s.holeCards.every(c => c.length === 2)).toBe(true);
+    });
+  });
+
   it("rejoining does NOT reset the turn clock", () => {
     const db = openDb(); setup(db); // seat 0 to act, deadline 30_000
     const r = reconnect(db, at(20_000), join(0, 1));
