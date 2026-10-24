@@ -70,6 +70,12 @@ export function useAutoMessages({
     }
     const hand = state.handNumber;
     if (signedHandsRef.current.has(hand)) return;
+    // The server stores checkpointNumber on the state only once all 4 signatures are in
+    // (C's lifecycle and bots use the same test): then there is nothing left to sign.
+    if (state.checkpointNumber >= hand) {
+      signedHandsRef.current.add(hand);
+      return;
+    }
     if (mySignedEntry(events, "checkpoint_sig", mySeat, hand)) {
       signedHandsRef.current.add(hand); // the log already has my signature for this hand
       return;
