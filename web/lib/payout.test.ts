@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextPayoutStep, type ChainSnapshot } from "./payout";
+import { nextPayoutStep, refundState, type ChainSnapshot } from "./payout";
 
 const base: ChainSnapshot = { status: 2, checkpointNumber: 0, challengeEnd: 0, now: 1000, withdrawableWei: 0n };
 
@@ -28,5 +28,20 @@ describe("nextPayoutStep", () => {
   });
   it("a table that never started on-chain is unavailable", () => {
     expect(nextPayoutStep({ ...base, status: 1 }, 3).kind).toBe("unavailable");
+  });
+});
+
+describe("refundState", () => {
+  const r = { status: 2, checkpointNumber: 0, deadline: 5000, now: 4000 };
+  it("before the deadline -> wait", () => {
+    expect(refundState(r)).toEqual({ kind: "wait", secondsLeft: 1001 });
+  });
+  it("after the deadline -> ready", () => {
+    expect(refundState({ ...r, now: 5001 })).toEqual({ kind: "ready" });
+  });
+  it("blocked once a checkpoint is on-chain or the table is not started", () => {
+    expect(refundState({ ...r, now: 9999, checkpointNumber: 1 })).toEqual({ kind: "blocked" });
+    expect(refundState({ ...r, now: 9999, status: 1 })).toEqual({ kind: "blocked" });
+    expect(refundState({ ...r, now: 9999, status: 5 })).toEqual({ kind: "blocked" });
   });
 });

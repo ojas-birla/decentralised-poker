@@ -26,12 +26,13 @@ export function usePayout(tableId: string, mySeat: number | null, enabled: boole
         finalRef.current = await fetchFinalCheckpoint(tableId);
         setFinal(finalRef.current);
       }
-      if (!finalRef.current) {
+      const snap = await readSnapshot(tableId, mySeat);
+      // A cancelled or refunded table never had a result, so only a started table needs one.
+      if (!finalRef.current && snap.status === 2) {
         setStep({ kind: "unavailable", reason: "The server has no final result for this table yet." });
         return;
       }
-      const snap = await readSnapshot(tableId, mySeat);
-      setStep(nextPayoutStep(snap, finalRef.current.checkpoint.checkpointNumber));
+      setStep(nextPayoutStep(snap, finalRef.current?.checkpoint.checkpointNumber ?? 0));
       setError(null);
     } catch (e) {
       setError(describeTxError(e));

@@ -21,6 +21,7 @@ import PokerTable from "./PokerTable";
 import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
 import PayoutPanel from "./PayoutPanel";
+import ExitPanel from "./ExitPanel";
 
 function connectionFor(phase: TablePhase): ConnectionState {
   switch (phase) {
@@ -160,6 +161,20 @@ export default function LiveTable({ tableId }: { tableId: string }) {
       </div>
     );
   }
+  // A cancelled or refunded table: the server refuses `join` once it is aborted, so do not wait for the socket.
+  const mySeatForRefund =
+    mySeat ?? (address ? info?.seats.find((s) => s.wallet === address)?.seat ?? null : null);
+  if (info?.state === "aborted" || state?.tableState === "aborted") {
+    return (
+      <div className="space-y-4">
+        {header}
+        {networkWarning}
+        <p className="text-sm">This table was cancelled or refunded.</p>
+        <PayoutPanel tableId={tableId} mySeat={mySeatForRefund} />
+        <BackToLobby />
+      </div>
+    );
+  }
   if (phase === "error") {
     return (
       <div className="space-y-4">
@@ -190,6 +205,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
         {networkWarning}
         <StatusBanner banner={banner} />
         <WaitingRoom room={buildRoom(tableId, state, info, players, events)} myAddress={address} />
+        <ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} />
       </div>
     );
   }
@@ -220,18 +236,6 @@ export default function LiveTable({ tableId }: { tableId: string }) {
     );
   }
 
-  if (state.tableState === "aborted") {
-    return (
-      <div className="space-y-4">
-        {header}
-        {networkWarning}
-        <StatusBanner banner={banner} />
-        <p className="text-sm">This table was aborted.</p>
-        <BackToLobby />
-      </div>
-    );
-  }
-
   const view = toTableView({
     state,
     mySeat,
@@ -246,6 +250,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
         <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
       )}
       <PokerTable view={view} log={log} banner={banner} pending={pending} onAction={onAction} />
+      <ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} />
       {pending && <p className="text-sm text-gray-600">Sending…</p>}
       {actionError && (
         <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">

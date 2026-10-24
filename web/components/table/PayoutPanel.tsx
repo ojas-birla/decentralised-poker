@@ -15,7 +15,7 @@ export default function PayoutPanel({ tableId, mySeat }: { tableId: string; mySe
 
   return (
     <section className="space-y-3 rounded border p-4">
-      <h2 className="font-semibold">Payout</h2>
+      <h2 className="font-semibold">{p.final ? "Payout" : "Refund"}</h2>
       {myWei !== undefined && <p className="text-sm">Your final share: {weiToEth(myWei)} test ETH</p>}
 
       {p.step.kind === "loading" && <p className="text-sm text-gray-600">Checking the contract…</p>}
@@ -40,7 +40,7 @@ export default function PayoutPanel({ tableId, mySeat }: { tableId: string; mySe
 
       {p.step.kind === "withdraw" && (
         <>
-          <p className="text-sm">Step 3 of 3. {weiToEth(p.step.amountWei.toString())} test ETH is ready for you.</p>
+          <p className="text-sm">{p.final ? "Step 3 of 3. " : "Refund: "}{weiToEth(p.step.amountWei.toString())} test ETH is ready for you.</p>
           <button className={btn} disabled={disabled} onClick={() => void p.withdraw()}>Withdraw to my wallet</button>
         </>
       )}

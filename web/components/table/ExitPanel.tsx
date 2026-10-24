@@ -1,0 +1,87 @@
+"use client";
+
+// Leaving a table that is not going to play.
+//  - lobby (fewer than 4 seats): any seated player can cancel the table; everyone then withdraws their deposit.
+//  - started but stuck: after the contract's deadline any player can trigger the emergency refund.
+import { useEffect, useRef, useState } from "react";
+import { describeTxError } from "@/lib/contractTx";
+import { cancelTableTx, emergencyRefundTx, readRefundInfo, refundState, type RefundInfo } from "@/lib/payout";
+
+const STARTED_STATES = ["waiting_deposits", "ready", "dealing", "betting", "showdown", "settlement"];
+
+export default function ExitPanel({ tableId, tableState, mySeat }: { tableId: string; tableState: string; mySeat: number | null }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [refund, setRefund] = useState<RefundInfo | null>(null);
+  const busyRef = useRef(false);
+  const started = STARTED_STATES.includes(tableState);
+
+  useEffect(() => {
+    if (!started || mySeat === null) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loop = async () => {
+      try { const r = await readRefundInfo(tableId); if (!stopped) setRefund(r); } catch { /* wallet not ready: try again */ }
+      if (!stopped) timer = setTimeout(loop, 10_000);
+    };
+    void loop();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [started, tableId, mySeat]);
+
+  if (mySeat === null || (tableState !== "lobby" && !started)) return null;
+
+  async function run(label: string, fn: (cb: (p: { stage: string }) => void) => Promise<string>) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setError(null);
+    setBusy(label);
+    try {
+      await fn(p => setBusy(p.stage === "wallet" ? `${label}: confirm in MetaMask` : `${label}: waiting for confirmation`));
+      setDone(true);
+    } catch (e) {
+      setError(describeTxError(e));
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
+
+  const rs = refund ? refundState(refund) : null;
+  const btn = "rounded border border-red-500 px-3 py-1 text-sm text-red-700 disabled:opacity-50";
+
+  return (
+    <section className="space-y-2 rounded border p-3 text-sm">
+      {tableState === "lobby" && (
+        <>
+          <p>Want out? Cancelling closes this table for everyone and refunds every deposit (each player then clicks Withdraw).</p>
+          <button
+            className={btn}
+            disabled={busy !== null || done}
+            onClick={() => { if (window.confirm("Cancel this table for ALL players and refund the deposits?")) void run("Cancelling", cb => cancelTableTx(tableId, cb)); }}
+          >
+            Cancel table and refund
+          </button>
+        </>
+      )}
+      {started && rs?.kind === "wait" && (
+        <p className="text-gray-600">If the game gets stuck, an emergency refund unlocks in {Math.ceil(rs.secondsLeft / 60)} min.</p>
+      )}
+      {started && rs?.kind === "ready" && (
+        <>
+          <p>The emergency refund is unlocked. Use it only if the game is really stuck: every player gets their buy-in back and the game ends.</p>
+          <button
+            className={btn}
+            disabled={busy !== null || done}
+            onClick={() => { if (window.confirm("End the game and refund every buy-in?")) void run("Refunding", cb => emergencyRefundTx(tableId, cb)); }}
+          >
+            Emergency refund
+          </button>
+        </>
+      )}
+      {busy && <p className="text-gray-600">{busy}…</p>}
+      {done && <p>Sent. This page switches to the refund screen in a few seconds.</p>}
+      {error && <p role="alert" className="rounded border border-red-500 p-2 text-red-600">{error}</p>}
+    </section>
+  );
+}

@@ -110,3 +110,41 @@ export const finalizeTable = (tableId: string, onProgress?: (p: TxProgress) => v
 
 export const withdrawFunds = (tableId: string, onProgress?: (p: TxProgress) => void) =>
   send(c => c.withdraw(BigInt(tableId)), onProgress);
+
+// ---- leaving a table that will not play: cancelTable (not full yet) and emergencyRefund (stuck game) ----
+export const cancelTableTx = (tableId: string, onProgress?: (p: TxProgress) => void) =>
+  send(c => c.cancelTable(BigInt(tableId)), onProgress);
+
+export const emergencyRefundTx = (tableId: string, onProgress?: (p: TxProgress) => void) =>
+  send(c => c.emergencyRefund(BigInt(tableId)), onProgress);
+
+export interface RefundInfo {
+  status: number;
+  checkpointNumber: number; // emergencyRefund is blocked once any checkpoint is on-chain
+  deadline: number;         // unix seconds, from the contract's refundDeadline()
+  now: number;              // newest block timestamp
+}
+
+export async function readRefundInfo(tableId: string): Promise<RefundInfo> {
+  const eth = getEthereum();
+  if (!eth) throw new Error("MetaMask not found.");
+  const provider = new BrowserProvider(eth);
+  const c = new Contract(POKER_ADDRESS, POKER_ABI, provider);
+  const [t, deadline, block] = await Promise.all([
+    c.getTable(BigInt(tableId)),
+    c.refundDeadline(BigInt(tableId)),
+    provider.getBlock("latest"),
+  ]);
+  return {
+    status: Number(t.status),
+    checkpointNumber: Number(t.checkpointNumber),
+    deadline: Number(deadline),
+    now: block ? block.timestamp : Math.floor(Date.now() / 1000),
+  };
+}
+
+/** Can the emergency refund be used right now, and if not, how long until it can? */
+export function refundState(r: RefundInfo): { kind: "blocked" } | { kind: "wait"; secondsLeft: number } | { kind: "ready" } {
+  if (r.status !== STARTED || r.checkpointNumber > 0) return { kind: "blocked" };
+  return r.now > r.deadline ? { kind: "ready" } : { kind: "wait", secondsLeft: r.deadline - r.now + 1 };
+}
