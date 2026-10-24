@@ -1,6 +1,12 @@
-export type ConnectionState = "mock" | "connecting" | "connected" | "disconnected";
+export type ConnectionState =
+  | "mock"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "waiting_seat"
+  | "disconnected";
 
-import type { AbortReason } from "@poker/shared";
+import type { AbortReason, BetActionPayload, Envelope, EventRow, ServerLogBody } from "@poker/shared";
 export type { AbortReason };
 
 // One line in the feed. `id` is the event log index, so keys stay stable.
@@ -44,6 +50,15 @@ export function buildBanner(
   if (connection === "connecting") {
     return { level: "info", text: "Connecting to the game server…" };
   }
+  if (connection === "reconnecting") {
+    return { level: "warn", text: "Connection lost. Reconnecting…" };
+  }
+  if (connection === "waiting_seat") {
+    return {
+      level: "info",
+      text: "Waiting for the server to register your seat. This can take a few seconds after a deposit.",
+    };
+  }
   if (!notice) return null;
 
   switch (notice.kind) {
@@ -70,6 +85,73 @@ export function buildBanner(
         text: "Your computed balances do not match the other players'. Not signing the checkpoint.",
       };
   }
+}
+
+// ---------- Live log: server event entries -> lines for the status log ----------
+
+const seatName = (s: number) => `Seat ${s + 1}`;
+
+function describeEntry(row: EventRow): LogEntry | null {
+  const id = row.index;
+  if (row.kind === "envelope") {
+    const env = row.body as Envelope;
+    switch (env.type) {
+      case "bet_action": {
+        const p = env.payload as BetActionPayload;
+        const who = seatName(env.seat);
+        const text =
+          p.action === "raise"
+            ? `${who} raised to ${p.amount}.`
+            : p.action === "allin"
+              ? `${who} went all-in.`
+              : p.action === "fold"
+                ? `${who} folded.`
+                : p.action === "check"
+                  ? `${who} checked.`
+                  : `${who} called.`;
+        return { id, kind: "action", text };
+      }
+      case "ready":
+        return { id, kind: "info", text: `${seatName(env.seat)} is ready.` };
+      case "checkpoint_sig":
+        return { id, kind: "info", text: `${seatName(env.seat)} signed the checkpoint.` };
+      default:
+        return null;
+    }
+  }
+  const body = row.body as ServerLogBody;
+  switch (body.kind) {
+    case "auto":
+      return {
+        id,
+        kind: "warn",
+        text: `${seatName(body.seat)} timed out and ${body.action === "fold" ? "folded" : "checked"}.`,
+      };
+    case "hand_started":
+      return {
+        id,
+        kind: "info",
+        text: `Hand ${body.handNumber} started. ${seatName(body.dealerSeat)} is the dealer.`,
+      };
+    case "hand_settled": {
+      const won = body.awards.length
+        ? body.awards.map((a) => `${seatName(a.seat)} won ${a.amount}`).join(", ")
+        : "no chips moved";
+      return { id, kind: "info", text: `Hand ${body.handNumber} settled: ${won}.` };
+    }
+    case "table_state":
+      return { id, kind: "info", text: `Table is now ${body.state.replace(/_/g, " ")}.` };
+    case "abort":
+      return {
+        id,
+        kind: "warn",
+        text: `Hand ${body.handNumber} aborted: ${ABORT_TEXT[body.reason]}.`,
+      };
+  }
+}
+
+export function buildLog(events: EventRow[]): LogEntry[] {
+  return events.map(describeEntry).filter((e): e is LogEntry => e !== null);
 }
 
 // ---------- Mock data (used while NEXT_PUBLIC_USE_MOCK=true) ----------
