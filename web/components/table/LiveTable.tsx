@@ -7,11 +7,13 @@ import { useWallet } from "@/components/WalletProvider";
 import { useTable, type TablePhase } from "@/hooks/useTable";
 import { useTableInfo, type TableInfo } from "@/hooks/useTableInfo";
 import { useAutoMessages } from "@/hooks/useAutoMessages";
+import { useLastResult } from "@/hooks/useLastResult";
 import { toBetPayload, toTableView } from "@/lib/gameToView";
 import { ConnectionState, TableNotice, buildBanner, buildLog } from "@/lib/statusLog";
 import type { PlayerAction } from "@/lib/tableView";
 import { SeatView, WaitingRoomState, isWaitingState } from "@/lib/waitingRoom";
 import { weiToEth } from "@/lib/createTable";
+import HandResultPanel from "./HandResultPanel";
 import PokerTable from "./PokerTable";
 import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
@@ -74,6 +76,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
 
   const { phase, state, mySeat, players, timer, events, abort, pending, send } = session;
   const log = useMemo(() => buildLog(events), [events]);
+  const lastResult = useLastResult(state); // must stay above the early returns below (rules of hooks)
 
   let notice: TableNotice | null = null;
   if (checkpointError) notice = { kind: "checkpoint_mismatch" };
@@ -136,6 +139,10 @@ export default function LiveTable({ tableId }: { tableId: string }) {
       <div className="space-y-4">
         {header}
         <StatusBanner banner={banner} />
+        {lastResult.visible && lastResult.result && (
+          <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
+        )}
+        <p className="text-lg font-semibold">Game finished</p>
         <p className="text-lg font-semibold">Game finished</p>
         <ul className="space-y-1 text-sm">
           {state.seats.map((p, i) => (
@@ -170,6 +177,9 @@ export default function LiveTable({ tableId }: { tableId: string }) {
 
   return (
     <div className="space-y-3">
+      {lastResult.visible && lastResult.result && (
+        <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
+      )}
       <PokerTable view={view} log={log} banner={banner} onAction={onAction} />
       {pending && <p className="text-sm text-gray-600">Sending…</p>}
       {actionError && (
