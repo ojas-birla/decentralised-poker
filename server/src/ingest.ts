@@ -76,8 +76,8 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
   const rawObj: Record<string, unknown> = isObj(raw) ? raw : {};
   const refSeq = isInt(rawObj.seq) ? rawObj.seq : 0;
 
-  const fail = (code: RejectCode, message: string): IngestResult => {
-    const reject: Reject = { refSeq, code, message };
+  const fail = (code: RejectCode, message: string, nextSeq?: number): IngestResult => {
+    const reject: Reject = nextSeq === undefined ? { refSeq, code, message } : { refSeq, code, message, nextSeq };
     if (typeof rawObj.tableId === "string") {
       logReject(db, rawObj.tableId, isInt(rawObj.seat) ? rawObj.seat : null, raw, reject, now);
     }
@@ -114,9 +114,8 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
   if (!deps.verifySig(env, player.sessionKey)) return fail("BAD_SIG", "signature does not match the session key");
 
   // Rule 3: seq must be last accepted + 1. Duplicates are not applied; gaps are rejected.
-  if (env.seq <= player.lastSeq) return fail("DUPLICATE", `seq ${env.seq} already seen`);
-  if (env.seq !== player.lastSeq + 1) return fail("BAD_SEQ", `expected seq ${player.lastSeq + 1}`);
-
+  if (env.seq <= player.lastSeq) return fail("DUPLICATE", `seq ${env.seq} already seen`, player.lastSeq + 1);
+  if (env.seq !== player.lastSeq + 1) return fail("BAD_SEQ", `expected seq ${player.lastSeq + 1}`, player.lastSeq + 1);
   // Rule 4: hand number.
   if (env.handNumber !== expectedHandNumber(env.type, state)) {
     return fail("WRONG_HAND", `expected hand ${expectedHandNumber(env.type, state)}`);

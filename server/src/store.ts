@@ -264,3 +264,9 @@ export function getMeta(db: Db, key: string): string | null {
 export function setMeta(db: Db, key: string, value: string): void {
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
 }
+
+/** Index of the newest log entry, or -1 if the log is empty. */
+export function lastEventIndex(db: Db, tableId: string): number {
+  const r = db.prepare("SELECT COALESCE(MAX(idx), -1) AS m FROM events WHERE table_id = ?").get(tableId) as { m: number };
+  return r.m;
+}
