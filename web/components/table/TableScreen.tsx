@@ -75,7 +75,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
   const dealing = playView?.state === "dealing" ? MOCK_DEALING[dealingIdx].ui : null;
   const banner =
     buildBanner(simulateLost ? "disconnected" : connection, notice) ??
-    (dealing ? dealingBanner(dealing, playView?.mySeat ?? null) : null);
+    (dealing ? dealingBanner(dealing, 4) : null);
 
   if (!USE_MOCK) return <LiveTable tableId={tableId} />;
 

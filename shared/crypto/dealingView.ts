@@ -99,12 +99,13 @@ export function deriveDealing(
         const forSeat = expectedForSeat(i, dealer, order);
         if (forSeat === null || p.forSeat !== forSeat) break;
         const required = unlockOrder(forSeat, order);
-        const entry = (v.unlocks[i] ??= { forSeat, chain: [] });
+        const entry = v.unlocks[i] ?? { forSeat, chain: [] };
         if (entry.chain.length >= required.length) break;
         if (required[entry.chain.length] !== seat) break;           // wrong sender or out of order
         const value = norm(p.value);
         if (!value) break;
         entry.chain.push({ seat, value });
+        v.unlocks[i] = entry;                                         // only stored once something was accepted
         break;
       }
       case "reveal_padlock": {

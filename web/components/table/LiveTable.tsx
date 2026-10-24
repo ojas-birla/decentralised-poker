@@ -108,7 +108,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   const { connection } = useSocket();
   const session = useTable(tableId);
   const info = useTableInfo(tableId);
-    const { checkpointError } = useAutoMessages({
+  const { checkpointError } = useAutoMessages({
     tableId,
     session,
     buyInWei: info?.buyInWei ?? null,
@@ -132,10 +132,12 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   // A server that is down shows up as connection === "disconnected" even before any phase change.
   const conn: ConnectionState =
     connection === "disconnected" ? "disconnected" : connectionFor(phase);
-  const activeCount = state ? state.seats.filter((p) => p.inHand).length : 4;
-  const banner =
-    buildBanner(connectionFor(phase), notice) ?? dealingBanner(dealing, activeCount);
 
+  // Connection problems and abort notices come first; the dealing banner fills the gaps.
+  // While we wait for a seat to answer a crypto step, the server's `timer` event carries that seat
+  // and its deadline (SPEC-PHASE3 D7), so the banner can show a countdown.
+    const activeCount = state ? state.seats.filter((p) => p.inHand).length : 4;
+  const banner = buildBanner(conn, notice) ?? dealingBanner(dealing, activeCount);
 
   const header = <h1 className="text-2xl font-bold">Table #{tableId}</h1>;
 
@@ -272,12 +274,12 @@ export default function LiveTable({ tableId }: { tableId: string }) {
       : null;
 
   return (
-<<<<<<< HEAD
     <PokerTable
       view={view}
       log={log}
       banner={banner}
       pending={pending}
+      busy={busyLabel(dealing)}
       onAction={onAction}
       escrow={escrow}
       resultSlot={
@@ -296,26 +298,5 @@ export default function LiveTable({ tableId }: { tableId: string }) {
         </>
       }
     />
-=======
-    <div className="space-y-3">
-      {lastResult.visible && lastResult.result && (
-        <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
-      )}
-            <PokerTable
-        view={view}
-        log={log}
-        banner={banner}
-        pending={pending}
-        busy={busyLabel(dealing)}
-        onAction={onAction}
-      />
-      {pending && <p className="text-sm text-gray-600">Sending…</p>}
-      {actionError && (
-        <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">
-          {actionError}
-        </p>
-      )}
-    </div>
->>>>>>> 9def8d8 (web: wire useDealing into LiveTable)
   );
 }
