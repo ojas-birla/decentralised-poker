@@ -159,7 +159,8 @@ interface AbandonVotePayload {
 ### Card positions and unlock order
 
 - The deck after the 4th shuffle step is `deck[0..51]`, and that index is the card's identity for all later messages.
-- Hole cards: seat `s` gets `deck[2*s]` and `deck[2*s+1]`... after the dealer rotation is applied. Rule: deal order starts at the seat left of the dealer, one card at a time, two rounds; the engine in `shared/` computes the mapping and everyone calls the same function `holeCardIndices(seat, dealer)`.
+- Hole cards: deal order starts at the seat left of the dealer, one card at a time, two rounds. Position `p` (0 = seat left of the dealer, up to 3 = the dealer) gets `deck[p]` in round 1 and `deck[p + 4]` in round 2, so the hole cards occupy `deck[0..7]`. Positions are counted over all 4 seats, so busted seats do not shift the indices. The engine in `shared/` computes the mapping and everyone calls the same function `holeCardIndices(seat, dealer)`.
+- Card id to real card (used only for hand ranking): rank = `id % 13` (order 2,3,4,5,6,7,8,9,T,J,Q,K,A), suit = `floor(id / 13)` (order c,d,h,s). So id 0 = 2c, 12 = Ac, 13 = 2d, 51 = As. The `card-N` labels in the crypto module carry no rank or suit.
 - Board: `deck[8]`, `deck[9]`, `deck[10]` flop; `deck[11]` turn; `deck[12]` river (burn cards are skipped to keep it simple: no burns).
 - For a hole card, the other three players each send `unlock_card` with `forSeat = owner`. The owner removes their own padlock locally and never sends it.
 - For a board card, all four send `unlock_card` with `forSeat = "board"`.
