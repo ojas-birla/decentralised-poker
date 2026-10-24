@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   PRIMARY KEY (table_id, checkpoint_number)
 );
 
+-- Small key/value store. The chain watcher keeps its cursor here (key 'lastBlock').
+CREATE TABLE IF NOT EXISTS meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS checkpoint_sigs (
   table_id           TEXT NOT NULL,
   checkpoint_number  INTEGER NOT NULL,
