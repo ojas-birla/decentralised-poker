@@ -52,8 +52,43 @@ export interface TableView {
   legal: LegalActions | null; // null when it is not your turn
 }
 
+// Length of one turn. Mirrors TURN_MS in server/src/timers.ts; only used to
+// draw the countdown ring, the server's deadline is what actually counts.
+export const TURN_MS = 30_000;
+
 export function shortAddress(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
+export function streetName(boardLength: number): string {
+  if (boardLength >= 5) return "River";
+  if (boardLength === 4) return "Turn";
+  if (boardLength === 3) return "Flop";
+  return "Pre-flop";
+}
+
+// Who posts the blinds. The UI works it out from the dealer button the same way the
+// engine does (engine/dealer.ts): heads-up the dealer is the small blind, otherwise
+// the small blind is the next player with chips after the dealer.
+export function blindSeats(seats: PlayerView[]): { sb: number | null; bb: number | null } {
+  const dealer = seats.findIndex((p) => p.isDealer);
+  if (dealer < 0) return { sb: null, bb: null };
+  const live = (i: number) => seats[i].address !== null && !seats[i].busted;
+  const next = (from: number) => {
+    for (let k = 1; k <= 4; k++) if (live((from + k) % 4)) return (from + k) % 4;
+    return null;
+  };
+  const headsUp = seats.filter((_, i) => live(i)).length === 2;
+  const sb = headsUp ? (live(dealer) ? dealer : next(dealer)) : next(dealer);
+  const bb = sb === null ? null : next(sb);
+  return { sb, bb };
+}
+
+// Share of the final pot you would be paying to call, as a whole percent.
+export function potOdds(view: TableView, legal: LegalActions): number | null {
+  if (legal.toCall <= 0) return null;
+  const total = view.pot + view.seats.reduce((sum, p) => sum + p.currentBet, 0) + legal.toCall;
+  return Math.round((legal.toCall / total) * 100);
 }
 
 export interface RaisePresets {

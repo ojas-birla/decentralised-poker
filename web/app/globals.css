@@ -1,3 +1,134 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- Poker table theme (components/table/*) ---- */
+@layer components {
+  /* Also defined in tailwind.config.ts, but kept here so they work without a dev-server restart. */
+  .font-grotesk { font-family: var(--font-grotesk), system-ui, sans-serif; }
+  .font-display { font-family: var(--font-display), Georgia, serif; }
+  .font-tmono { font-family: var(--font-mono-table), ui-monospace, monospace; }
+
+  .table-stage {
+    background:
+      radial-gradient(ellipse 65% 45% at 50% -5%, rgba(124, 58, 237, 0.38), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 50% 100%, rgba(16, 185, 129, 0.07), transparent 70%),
+      #07070c;
+  }
+
+  /* The oval: gold outline, dark wood rail, green felt. */
+  .felt {
+    border-radius: 50%;
+    border: 2px solid #d9a928;
+    background: radial-gradient(ellipse at 50% 42%, #1d8a67 0%, #15714f 55%, #0d5a3f 100%);
+    box-shadow:
+      inset 0 0 0 12px #2a1810,
+      inset 0 0 0 13px rgba(217, 169, 40, 0.3),
+      inset 0 24px 70px rgba(0, 0, 0, 0.35),
+      0 0 90px rgba(16, 185, 129, 0.1),
+      0 30px 80px rgba(0, 0, 0, 0.6);
+  }
+
+  .card-face {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+    animation: card-in 220ms ease-out both;
+  }
+
+  .card-back {
+    background-color: #16162a;
+    background-image:
+      repeating-linear-gradient(45deg, rgba(217, 169, 40, 0.5) 0 1px, transparent 1px 6px),
+      repeating-linear-gradient(-45deg, rgba(217, 169, 40, 0.5) 0 1px, transparent 1px 6px);
+    border: 1.5px solid #d9a928;
+    border-radius: 6px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .turn-pill {
+    box-shadow: 0 0 22px rgba(245, 197, 66, 0.55);
+    animation: pill-pulse 1.8s ease-in-out infinite;
+  }
+
+  .btn-raise {
+    box-shadow: 0 0 26px rgba(245, 197, 66, 0.42);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .btn-raise:enabled:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 34px rgba(245, 197, 66, 0.6);
+  }
+  .btn-raise:disabled {
+    box-shadow: none;
+  }
+
+  /* Raise slider */
+  .raise-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    background: #2a2a3d;
+    outline: none;
+  }
+  .raise-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background: #f5c542;
+    border: 2px solid #07070c;
+    box-shadow: 0 0 10px rgba(245, 197, 66, 0.6);
+    cursor: pointer;
+  }
+  .raise-slider::-moz-range-thumb {
+    height: 14px;
+    width: 14px;
+    border-radius: 9999px;
+    background: #f5c542;
+    border: 2px solid #07070c;
+    cursor: pointer;
+  }
+  .raise-slider:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+}
+
+@keyframes result-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes result-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pill-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 14px rgba(245, 197, 66, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(245, 197, 66, 0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-face,
+  .turn-pill {
+    animation: none;
+  }
+}

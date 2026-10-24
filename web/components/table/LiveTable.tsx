@@ -244,19 +244,38 @@ export default function LiveTable({ tableId }: { tableId: string }) {
     totalHands: info?.totalHands ?? 0,
   });
 
+  // Buy-in numbers for the Escrow & Funds panel. Each of the 4 players put in the same buy-in.
+  const escrow =
+    info && /^\d+$/.test(info.buyInWei) && mySeat !== null
+      ? {
+          deposit: `${weiToEth(info.buyInWei)} ETH`,
+          total: `${weiToEth((BigInt(info.buyInWei) * 4n).toString())} ETH`,
+        }
+      : null;
+
   return (
-    <div className="space-y-3">
-      {lastResult.visible && lastResult.result && (
-        <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
-      )}
-      <PokerTable view={view} log={log} banner={banner} pending={pending} onAction={onAction} />
-      <ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} />
-      {pending && <p className="text-sm text-gray-600">Sending…</p>}
-      {actionError && (
-        <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">
-          {actionError}
-        </p>
-      )}
-    </div>
+    <PokerTable
+      view={view}
+      log={log}
+      banner={banner}
+      pending={pending}
+      onAction={onAction}
+      escrow={escrow}
+      resultSlot={
+        lastResult.visible && lastResult.result ? (
+          <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
+        ) : null
+      }
+      extras={
+        <>
+          <ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} />
+          {actionError && (
+            <p role="alert" className="rounded-2xl border border-red-500 bg-red-950 p-3 text-red-200">
+              {actionError}
+            </p>
+          )}
+        </>
+      }
+    />
   );
 }

@@ -68,9 +68,13 @@ export default function TableScreen({ tableId }: { tableId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2 rounded border border-yellow-500 p-2 text-sm">
+      <details className="fixed left-1/2 top-4 z-50 -translate-x-1/2 max-w-[min(560px,92vw)] rounded-xl border border-yellow-500 bg-black/90 p-2 text-xs text-white shadow-2xl">
+        <summary className="cursor-pointer select-none font-semibold text-yellow-400">
+          Mock mode controls
+        </summary>
+        <div className="mt-2 space-y-2">
         <div>
-          Mock mode. Preview a state:{" "}
+          Preview a state:{" "}
           {labels.map((label, i) => (
             <button
               key={label}
@@ -80,7 +84,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
                 setNoticeIdx(0);
               }}
               className={`mr-2 mb-1 rounded border px-2 py-0.5 ${
-                i === preview ? "bg-black text-white" : ""
+                i === preview ? "bg-yellow-400 text-black" : ""
               }`}
             >
               {label}
@@ -95,7 +99,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
               onClick={() => setNoticeIdx(i)}
               disabled={!playView}
               className={`mr-2 mb-1 rounded border px-2 py-0.5 disabled:opacity-40 ${
-                i === noticeIdx ? "bg-black text-white" : ""
+                i === noticeIdx ? "bg-yellow-400 text-black" : ""
               }`}
             >
               {n.label}
@@ -103,18 +107,25 @@ export default function TableScreen({ tableId }: { tableId: string }) {
           ))}
           <button
             onClick={() => setSimulateLost((v) => !v)}
-            className={`mb-1 rounded border px-2 py-0.5 ${simulateLost ? "bg-black text-white" : ""}`}
+            className={`mb-1 rounded border px-2 py-0.5 ${simulateLost ? "bg-yellow-400 text-black" : ""}`}
           >
             Simulate lost connection
           </button>
         </div>
-      </div>
+        {lastAction && (
+          <p className="text-slate-300">
+            You chose &quot;{lastAction}&quot;. Nothing is sent to the server.
+          </p>
+        )}
+        </div>
+      </details>
 
       {shownView ? (
         <PokerTable
           view={shownView}
           log={MOCK_LOGS[preview - waitingCount]}
           banner={banner}
+          escrow={{ deposit: "0.01 ETH", total: "0.04 ETH" }}
           onAction={(a) => setLastAction(describe(a))}
         />
       ) : (
@@ -124,11 +135,6 @@ export default function TableScreen({ tableId }: { tableId: string }) {
         </>
       )}
 
-      {lastAction && (
-        <p className="text-sm text-gray-600">
-          Mock mode: you chose &quot;{lastAction}&quot;. Nothing is sent to the server.
-        </p>
-      )}
     </div>
   );
 }
