@@ -12,7 +12,7 @@ import { addPlayer, createGame, getMeta, getPlayer, loadGame, setDeposited, setM
 import { RPC_URL } from "./env";
 
 export const CURSOR_KEY = "lastBlock"; // meta table: last block that was fully processed
-export const CHUNK_BLOCKS = 2000;      // public RPCs reject bigger getLogs ranges
+export const CHUNK_BLOCKS = 200;       // sepolia.base.org rejects getLogs ranges above 200 blocks
 export const POLL_MS = 3000;
 
 export interface ChainHooks {
