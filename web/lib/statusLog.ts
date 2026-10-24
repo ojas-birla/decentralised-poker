@@ -19,7 +19,7 @@ export interface LogEntry {
 // PROPOSAL: not in SPEC.md yet. Something the player must be told about,
 // derived from the event log and presence events.
 export type TableNotice =
-  | { kind: "waiting_for_player"; seat: number; deadlineMs: number } // 60 s reconnect grace
+    | { kind: "waiting_for_player"; seat: number; deadlineMs?: number } // 2.1: no server deadline, the 30 s turn clock folds them
   | { kind: "hand_aborted"; reason: AbortReason }
   | { kind: "seat_disconnected"; seat: number; deadlineMs?: number } // D5: it is their turn and they are offline
   | { kind: "checkpoint_mismatch" }; // our balances differ from the others, so we do not sign
@@ -66,7 +66,7 @@ export function buildBanner(
     case "waiting_for_player":
       return {
         level: "warn",
-        text: `Waiting for seat ${notice.seat + 1}'s connection. The hand is aborted if they do not return.`,
+                text: `Seat ${notice.seat + 1} is disconnected. They are folded automatically if they do not act when their turn clock runs out.`,
         deadlineMs: notice.deadlineMs,
       };
     case "hand_aborted": {
@@ -140,6 +140,12 @@ function describeEntry(row: EventRow): LogEntry | null {
         kind: "info",
         text: `Hand ${body.handNumber} started. ${seatName(body.dealerSeat)} is the dealer.`,
       };
+    case "street":
+      return {
+        id,
+        kind: "info",
+        text: `${body.street[0].toUpperCase()}${body.street.slice(1)} dealt.`,
+      };
     case "hand_settled": {
       const won = body.awards.length
         ? body.awards.map((a) => `${seatName(a.seat)} won ${a.amount}`).join(", ")
@@ -162,7 +168,7 @@ function describeEntry(row: EventRow): LogEntry | null {
 }
 
 export function buildLog(events: EventRow[]): LogEntry[] {
-  return events.map(describeEntry).filter((e): e is LogEntry => e !== null);
+  return events.map(describeEntry).filter((e): e is LogEntry => e != null);
 }
 
 // ---------- Mock data (used while NEXT_PUBLIC_USE_MOCK=true) ----------
@@ -195,21 +201,21 @@ export const MOCK_LOGS: LogEntry[][] = [
     { id: 0, kind: "info", text: "Hand 3 started. Seat 2 is the dealer." },
     { id: 1, kind: "info", text: "Cards dealt." },
     { id: 2, kind: "action", text: "Seat 3 folded." },
-    { id: 3, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
+    { id: 3, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
     { id: 4, kind: "action", text: "Seat 2 bet 20." },
   ],
   [
     { id: 0, kind: "info", text: "Hand 7 started. Seat 3 is the dealer." },
     { id: 1, kind: "action", text: "Seat 3 folded." },
-    { id: 2, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
-    { id: 3, kind: "info", text: "Turn: K♥." },
-    { id: 4, kind: "info", text: "River: 9♠." },
+    { id: 2, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
+    { id: 3, kind: "info", text: "Turn: K♥️." },
+    { id: 4, kind: "info", text: "River: 9♠️." },
   ],
   [
     { id: 0, kind: "info", text: "Hand 7 started. Seat 3 is the dealer." },
     { id: 1, kind: "action", text: "Seat 3 folded." },
-    { id: 2, kind: "info", text: "Flop: A♥ 7♦ 2♣." },
-    { id: 3, kind: "info", text: "Turn: K♥." },
-    { id: 4, kind: "info", text: "River: 9♠." },
+    { id: 2, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
+    { id: 3, kind: "info", text: "Turn: K♥️." },
+    { id: 4, kind: "info", text: "River: 9♠️." },
   ],
 ];
