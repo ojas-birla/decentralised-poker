@@ -22,6 +22,7 @@ import type {
 } from "@poker/shared";
 import type { Db } from "./db";
 import { validatePayload } from "./payloads";
+import { checkCrypto } from "./cryptoCheck";
 import { logStreets } from "./streetLog"
 import { syncTurnTimer } from "./timers";
 import {
@@ -182,8 +183,18 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
       cpStep = { cp, hash: p.checkpointHash, signature: p.signature };
       break;
     }
+    case "commit_padlock":
+    case "shuffle_step":
+    case "unlock_card":
+    case "reveal_padlock": {
+      // Phase 3 (SPEC-PHASE3 C-4): right sender, right order, a card that is waiting, real curve points.
+      // The state does not change here: lifecycle runs applyCrypto after the message is saved.
+      const bad = checkCrypto(db, state, env);
+      if (bad) return fail(bad.code, bad.message);
+      break;
+    }
     default:
-      // join/ready lifecycle (2.4) and the crypto messages (Phase 3) are relayed and logged only for now.
+      // join/ready lifecycle (2.4) is relayed and logged only for now.
       break;
   }
 

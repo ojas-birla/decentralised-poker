@@ -24,10 +24,10 @@ export function validatePayload(type: MessageType, payload: unknown, senderSeat:
     case "commit_padlock":
       return isHex32(payload.commitment);
     case "shuffle_step":
-      // step = the sender's position in the shuffle order; shuffle order is seat order.
+      // step = the sender's INDEX in the active-seat order, not the seat number (SPEC-PHASE3 D3).
+      // Whether it is this sender's turn is a game rule: cryptoCheck.ts decides that.
       return (
         inRange(payload.step, 0, 3) &&
-        payload.step === senderSeat &&
         Array.isArray(payload.deck) &&
         payload.deck.length === 52 &&
         payload.deck.every(isHex32)
