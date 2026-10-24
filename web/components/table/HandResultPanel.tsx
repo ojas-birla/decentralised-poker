@@ -1,6 +1,7 @@
 "use client";
 
-import type { HandResult } from "@/lib/handResult";
+import { useHandNames } from "@/hooks/useHandNames";
+import { wonBySeat, type HandResult } from "@/lib/handResult";
 import PlayingCard from "./PlayingCard";
 
 const seatName = (seat: number, mySeat: number | null) =>
@@ -15,7 +16,8 @@ export default function HandResultPanel({
   mySeat: number | null;
   onDismiss: () => void;
 }) {
-  const won = new Map(result.awards.map((a) => [a.seat, a.amount]));
+  const names = useHandNames(result);
+  const won = wonBySeat(result.awards);
 
   return (
     <section
@@ -43,24 +45,44 @@ export default function HandResultPanel({
 
       {result.hands.length > 0 ? (
         <ul className="space-y-1">
-          {result.hands.map((h) => (
-            <li key={h.seat} className="flex items-center gap-2">
-              <span className="w-24">{seatName(h.seat, mySeat)}</span>
-              <PlayingCard card={h.cards[0]} small />
-              <PlayingCard card={h.cards[1]} small />
-              {won.has(h.seat) && (
-                <span className="rounded-full bg-emerald-500 px-2 py-0.5 font-bold text-slate-900">
-                  +{won.get(h.seat)}
-                </span>
-              )}
-            </li>
-          ))}
+          {result.hands.map((h) => {
+            const amount = won.get(h.seat);
+            const isWinner = amount !== undefined && amount > 0;
+            return (
+              <li
+                key={h.seat}
+                className={`flex flex-wrap items-center gap-2 rounded-lg p-1 ${
+                  isWinner ? "bg-emerald-500/20 ring-1 ring-emerald-400" : "opacity-80"
+                }`}
+              >
+                <span className="w-24">{seatName(h.seat, mySeat)}</span>
+                <PlayingCard card={h.cards[0]} small />
+                <PlayingCard card={h.cards[1]} small />
+                {names[h.seat] && <span className="text-xs text-slate-300">{names[h.seat]}</span>}
+                {isWinner && (
+                  <span className="ml-auto flex items-center gap-1">
+                    <span className="text-xs font-semibold text-emerald-300">Winner</span>
+                    <span className="rounded-full bg-emerald-500 px-2 py-0.5 font-bold text-slate-900">
+                      +{amount}
+                    </span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <ul className="space-y-1">
           {result.awards.map((a) => (
-            <li key={a.seat}>
-              {seatName(a.seat, mySeat)} won {a.amount}. Everyone else folded.
+            <li
+              key={a.seat}
+              className="rounded-lg bg-emerald-500/20 p-1 ring-1 ring-emerald-400"
+            >
+              {seatName(a.seat, mySeat)} won{" "}
+              <span className="rounded-full bg-emerald-500 px-2 py-0.5 font-bold text-slate-900">
+                +{a.amount}
+              </span>
+              . Everyone else folded.
             </li>
           ))}
         </ul>
