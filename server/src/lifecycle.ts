@@ -183,9 +183,7 @@ export function recoverAll(db: Db, deps: LifecycleDeps = {}): string[] {
     if (afterChange(db, id, deps)) changed.push(id);
     const g = loadGame(db, id);
     // Keep an existing deadline (it survives restarts); only create a clock if one is missing.
-    if (g && g.state.tableState === "betting" && g.state.toActSeat !== null && !getTimer(db, id)) {
-      syncTurnTimer(db, id, g.state);
-    }
+    if (g && !getTimer(db, id)) syncTurnTimer(db, id, g.state); // turn clock or crypto clock, whichever the state needs
   }
   return changed;
 }

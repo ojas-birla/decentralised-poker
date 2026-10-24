@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startHand } from "@poker/shared";
+import { abortHand, startHand } from "@poker/shared";
 import type { GameState, MessageType, Seat } from "@poker/shared";
 import { openDb, type Db } from "./db";
 import { addPlayer, createGame, getEvents, loadGame, saveState } from "./store";
 import { ingest, type IngestDeps } from "./ingest";
-import { TURN_MS, fireDueTimers, getTimer, syncTurnTimer } from "./timers";
+import { CRYPTO_MS, TURN_MS, awaitedSeat, fireDueTimers, getTimer, syncTurnTimer } from "./timers";
 
 const T = "1";
 const wallet = (i: number) => "0x" + String(i + 1).repeat(40);
@@ -98,5 +98,80 @@ describe("turn timer", () => {
     const [r] = fireDueTimers(db, TURN_MS + 5000);
     expect(r).toMatchObject({ seat: 0, action: "fold" });
     db.close();
+  });
+});
+// ---------------------------------------------------------------- Phase 3: crypto clock
+
+function setupCrypto(db: Db) {
+  createGame(db, { tableId: T, creator: wallet(0), buyInWei: 1_000_000_000_000_000n, totalHands: 5 });
+  for (let i = 0; i < 4; i++) addPlayer(db, { tableId: T, seat: i as Seat, wallet: wallet(i), sessionKey: key(i) });
+  const st = loadGame(db, T)!.state;
+  st.tableState = "ready";
+  const started = startHand(st) as GameState; // no deck: real shuffle, state is "dealing"
+  saveState(db, T, started);
+  syncTurnTimer(db, T, started, 0);
+}
+const commit = (seat: number) =>
+  ({ tableId: T, handNumber: 1, seq: 1, sender: wallet(seat), seat, type: "commit_padlock" as MessageType,
+     payload: { commitment: "ab".repeat(32) }, sig: "0xok" });
+
+describe("crypto timer", () => {
+  it("arms a 60 s crypto clock for the first seat that owes a commitment", () => {
+    const db = openDb(); setupCrypto(db);
+    expect(awaitedSeat(db, T, loadGame(db, T)!.state)).toBe(0);
+    expect(getTimer(db, T)).toMatchObject({ kind: "crypto", seat: 0, handNumber: 1, deadline: CRYPTO_MS });
+  });
+
+  it("another player's valid message does not give the awaited seat a fresh clock", () => {
+    const db = openDb(); setupCrypto(db);
+    expect((ingest(db, at(10_000), commit(1)) as any).ok).toBe(true);
+    expect(getTimer(db, T)).toMatchObject({ kind: "crypto", seat: 0, deadline: CRYPTO_MS }); // still seat 0, still 60_000
+  });
+
+  it("the awaited seat moves on when it answers, and the new seat gets a fresh 60 s", () => {
+    const db = openDb(); setupCrypto(db);
+    expect((ingest(db, at(20_000), commit(0)) as any).ok).toBe(true);
+    expect(getTimer(db, T)).toMatchObject({ kind: "crypto", seat: 1, deadline: 20_000 + CRYPTO_MS });
+  });
+
+  it("does nothing before the deadline", () => {
+    const db = openDb(); setupCrypto(db);
+    expect(fireDueTimers(db, CRYPTO_MS - 1)).toEqual([]);
+    expect(loadGame(db, T)!.state.tableState).toBe("dealing");
+  });
+
+  it("CRYPTO_STALL: aborts the hand, chips back to 1000 each, abort logged, clock cleared", () => {
+    const db = openDb(); setupCrypto(db);
+    const r = fireDueTimers(db, CRYPTO_MS);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ kind: "abort", seat: 0, reason: "CRYPTO_STALL", handNumber: 1 });
+    const s = loadGame(db, T)!.state;
+    expect(s.tableState).toBe("settlement");
+    expect(s.aborted).toEqual({ reason: "CRYPTO_STALL" });
+    expect(s.seats.map(p => p.chips)).toEqual([1000, 1000, 1000, 1000]);
+    expect(autos(db)).toEqual([{ kind: "abort", handNumber: 1, reason: "CRYPTO_STALL" }]);
+    expect(getTimer(db, T)).toBeNull();
+    expect(fireDueTimers(db, CRYPTO_MS * 2)).toEqual([]); // fires once
+  });
+
+  it("the clock survives a restart", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "poker-")), "t.db");
+    let db = openDb(file); setupCrypto(db);
+    db.close();
+
+    db = openDb(file);
+    expect(getTimer(db, T)).toMatchObject({ kind: "crypto", seat: 0, deadline: CRYPTO_MS });
+    const [r] = fireDueTimers(db, CRYPTO_MS + 5000);
+    expect(r).toMatchObject({ kind: "abort", reason: "CRYPTO_STALL" });
+    db.close();
+  });
+
+  it("the clock is cleared when the hand moves on, and a stale clock never aborts", () => {
+    const db = openDb(); setupCrypto(db);
+    const ab = abortHand(loadGame(db, T)!.state, "BAD_REVEAL") as GameState;
+    saveState(db, T, ab);                 // the hand ended by other means; nobody re-synced the clock
+    expect(fireDueTimers(db, CRYPTO_MS)).toEqual([]);
+    expect(getTimer(db, T)).toBeNull();   // the stale clock was dropped, nothing was aborted twice
+    expect(autos(db)).toEqual([]);
   });
 });

@@ -100,7 +100,7 @@ describe("street log entries (SPEC-2.2 §4)", () => {
     expect(streetNames(db)).toEqual([]);
     const fired = fireDueTimers(db, Date.now() + TURN_MS + 1000);
     expect(fired).toHaveLength(1);
-    expect(fired[0].action).toBe("check");
+    expect(fired[0]).toMatchObject({ kind: "auto", action: "check" });
     expect(streetNames(db)).toEqual(["flop"]);
     const ev = getEvents(db, T);
     const autoIdx = ev.find(e => (e.body as { kind: string }).kind === "auto")!.index;

@@ -63,6 +63,7 @@ const MESSAGE_TYPES: readonly MessageType[] = [
 ];
 
 const PHASE3_ONLY: readonly MessageType[] = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock", "abandon_vote"];
+const CRYPTO_MESSAGES: readonly MessageType[] = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock"];
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -226,6 +227,10 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
       // Restart the clock for whoever acts next (or clear it). Never for `join`: a reconnect changes no game
       // state, and otherwise a stalling player could rejoin forever to reset their own 30 seconds.
       if (env.type !== "join") syncTurnTimer(db, env.tableId, nextState, now);
+    } else if (CRYPTO_MESSAGES.includes(env.type)) {
+      // A crypto message does not change the game state, but it changes who we are waiting for.
+      // The envelope is already in the log (appendEvent above), so awaitedSeat sees it.
+      syncTurnTimer(db, env.tableId, nextState, now);
     }
     return idx;
   })();
