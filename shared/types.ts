@@ -59,4 +59,5 @@ export interface Reject {
   refSeq: number;
   code: RejectCode;
   message: string;
+  nextSeq?: number;   // set by the server on BAD_SEQ and DUPLICATE
 }

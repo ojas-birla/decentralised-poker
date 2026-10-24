@@ -6,7 +6,8 @@ import WalletBar from "@/components/WalletBar";
 import { useWallet } from "@/components/WalletProvider";
 import { SEATS, TableSummary, USE_MOCK, fetchOpenTables } from "@/lib/lobby";
 import { weiToEth } from "@/lib/createTable";
-import { ChainError, ChainStatus, joinTable as joinTableOnChain } from "@/lib/poker";
+import { EXPLORER_TX_URL, describeTxError, joinTable } from "@/lib/contractTx";
+import { getOrCreateSessionKey } from "@/lib/sessionKey";
 
 const POLL_MS = 5000;
 
@@ -16,9 +17,8 @@ export default function LobbyPage() {
   const [tables, setTables] = useState<TableSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
-  const [joinStatus, setJoinStatus] = useState<ChainStatus | null>(null);
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const [manualId, setManualId] = useState("");
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
   const walletReady = !!address && !isWrongNetwork;
 
   const load = useCallback(async (isCancelled: () => boolean) => {
@@ -47,17 +47,23 @@ export default function LobbyPage() {
   }, [load]);
 
   async function handleJoin(tableId: string) {
-    if (joiningId !== null) return;
-    setJoinError(null);
+    if (!address || joiningId) return;
     setJoiningId(tableId);
-    setJoinStatus("wallet");
+    setTxError(null);
+    setTxHash(null);
     try {
-      await joinTableOnChain(tableId, setJoinStatus);
+      // Same key is reused if the player comes back to this table later.
+      const sk = getOrCreateSessionKey(address, tableId);
+      await joinTable(
+        { tableId, sessionKey: sk.address.toLowerCase(), wallet: address },
+        (p) => {
+          if (p.hash) setTxHash(p.hash);
+        }
+      );
       router.push(`/table/${tableId}`);
-    } catch (err) {
-      setJoinError(err instanceof ChainError ? err.message : "Something went wrong.");
+    } catch (e) {
+      setTxError(describeTxError(e));
       setJoiningId(null);
-      setJoinStatus(null);
     }
   }
 
@@ -87,32 +93,33 @@ export default function LobbyPage() {
         </p>
       )}
 
+      {txHash && joiningId && (
+        <p className="text-sm text-gray-600">
+          Transaction sent.{" "}
+          <a
+            href={`${EXPLORER_TX_URL}${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View on BaseScan
+          </a>
+          . Waiting for confirmation…
+        </p>
+      )}
+
+      {txError && (
+        <p role="alert" className="rounded border border-red-500 p-3 text-sm text-red-600">
+          {txError}
+        </p>
+      )}
+
       {open === null && !error && <p className="text-sm text-gray-500">Loading tables…</p>}
 
       {open !== null && open.length === 0 && (
         <p className="text-sm">No open tables right now. Create one from the home page.</p>
       )}
 
-      {joinError && (
-        <p className="rounded border border-red-500 p-3 text-sm text-red-600">{joinError}</p>
-      )}
-
-      <div className="flex max-w-md items-center gap-2 rounded border p-3 text-sm">
-        <input
-          value={manualId}
-          onChange={(e) => setManualId(e.target.value.trim())}
-          placeholder="Table ID, e.g. 1"
-          className="w-full rounded border p-2"
-        />
-        <button
-          onClick={() => handleJoin(manualId)}
-          disabled={!walletReady || joiningId !== null || manualId === ""}
-          className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-        >
-          Join by ID
-        </button>
-      </div>
-      
       <ul className="space-y-3">
         {open?.map((t) => {
           const full = t.players.length >= SEATS;
@@ -144,13 +151,7 @@ export default function LobbyPage() {
                   disabled={full || !walletReady || joiningId !== null}
                   className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
                 >
-                  {joiningId === t.tableId
-                    ? joinStatus === "wallet"
-                      ? "Confirm in MetaMask…"
-                      : "Waiting for confirmation…"
-                    : full
-                      ? "Full"
-                      : "Join"}
+                  {joiningId === t.tableId ? "Joining…" : full ? "Full" : "Join"}
                 </button>
               )}
             </li>

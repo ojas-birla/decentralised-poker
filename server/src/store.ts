@@ -253,3 +253,14 @@ export function latestCompleteCheckpoint(db: Db, tableId: string): CheckpointRow
   ).get(tableId) as { checkpoint_number: number } | undefined;
   return r ? getCheckpoint(db, tableId, r.checkpoint_number) : null;
 }
+
+// ---------------------------------------------------------------- meta (key/value)
+
+export function getMeta(db: Db, key: string): string | null {
+  const r = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined;
+  return r ? r.value : null;
+}
+
+export function setMeta(db: Db, key: string, value: string): void {
+  db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+}

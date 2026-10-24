@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import WalletBar from "@/components/WalletBar";
 import { useWallet } from "@/components/WalletProvider";
+import { EXPLORER_TX_URL, createTable, describeTxError } from "@/lib/contractTx";
+import { getOrCreateSessionKey, promotePendingKey } from "@/lib/sessionKey";
 import {
   BIG_BLIND,
   CHIPS_PER_PLAYER,
@@ -13,46 +15,47 @@ import {
   parseCreateForm,
   weiToEth,
 } from "@/lib/createTable";
-import { ChainError, ChainStatus, createTable as createTableOnChain } from "@/lib/poker";
 
 export default function CreatePage() {
   const router = useRouter();
   const { address, isWrongNetwork } = useWallet();
   const [buyIn, setBuyIn] = useState("0.001");
   const [hands, setHands] = useState("10");
-  const [status, setStatus] = useState<ChainStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
 
   const result = parseCreateForm(buyIn, hands);
   const errors = result.ok ? {} : result.errors;
   const walletReady = !!address && !isWrongNetwork;
-  const busy = status !== null;
   const canSubmit = result.ok && walletReady && !busy;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!result.ok || !walletReady || busy) return;
+    if (!result.ok || !walletReady || !address || busy) return;
+    setBusy(true);
     setTxError(null);
-    setStatus("wallet");
+    setTxHash(null);
     try {
-      const { tableId } = await createTableOnChain({
-        buyInWei: BigInt(result.value.buyInWei),
-        handCount: result.value.hands,
-        onStatus: setStatus,
-      });
+      // The session key's address is registered on-chain inside this transaction.
+      const sk = getOrCreateSessionKey(address, "pending");
+      const { tableId } = await createTable(
+        {
+          buyInWei: result.value.buyInWei,
+          hands: result.value.hands,
+          sessionKey: sk.address.toLowerCase(),
+        },
+        (p) => {
+          if (p.hash) setTxHash(p.hash);
+        }
+      );
+      promotePendingKey(address, tableId); // keep the key under the real table id
       router.push(`/table/${tableId}`);
     } catch (err) {
-      setTxError(err instanceof ChainError ? err.message : "Something went wrong.");
-      setStatus(null);
+      setTxError(describeTxError(err)); // form stays editable after a reject
+      setBusy(false);
     }
   }
-
-  const buttonText =
-    status === "wallet"
-      ? "Confirm in MetaMask…"
-      : status === "mining" || status === "done"
-        ? "Waiting for confirmation…"
-        : "Create table";
 
   return (
     <div className="space-y-6">
@@ -75,8 +78,10 @@ export default function CreatePage() {
             type="text"
             inputMode="decimal"
             value={buyIn}
-            disabled={busy}
-            onChange={(e) => setBuyIn(e.target.value)}
+            onChange={(e) => {
+              setBuyIn(e.target.value);
+              setTxError(null);
+            }}
             className="w-full rounded border p-2"
           />
           {errors.buyIn && <p className="text-sm text-red-600">{errors.buyIn}</p>}
@@ -91,8 +96,10 @@ export default function CreatePage() {
             type="text"
             inputMode="numeric"
             value={hands}
-            disabled={busy}
-            onChange={(e) => setHands(e.target.value)}
+            onChange={(e) => {
+              setHands(e.target.value);
+              setTxError(null);
+            }}
             className="w-full rounded border p-2"
           />
           {errors.hands && <p className="text-sm text-red-600">{errors.hands}</p>}
@@ -112,7 +119,7 @@ export default function CreatePage() {
           disabled={!canSubmit}
           className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
         >
-          {buttonText}
+          {busy ? (txHash ? "Confirming…" : "Waiting for MetaMask…") : "Create table"}
         </button>
 
         {!walletReady && (
@@ -120,11 +127,28 @@ export default function CreatePage() {
             Connect your wallet on Base Sepolia to create a table.
           </p>
         )}
-
-        {txError && (
-          <p className="rounded border border-red-500 p-3 text-sm text-red-600">{txError}</p>
-        )}
       </form>
+
+      {txHash && busy && (
+        <p className="max-w-md text-sm text-gray-600">
+          Transaction sent.{" "}
+          <a
+            href={`${EXPLORER_TX_URL}${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View on BaseScan
+          </a>
+          . Waiting for confirmation…
+        </p>
+      )}
+
+      {txError && (
+        <p role="alert" className="max-w-md rounded border border-red-500 p-3 text-sm text-red-600">
+          {txError}
+        </p>
+      )}
     </div>
   );
 }

@@ -6,11 +6,9 @@ import { openDb } from "./db";
 import { createApp } from "./lobby";
 import { resetAllConnected } from "./reconnect";
 import { TurnTimerScheduler } from "./timers";
+import { PORT, DB_PATH, WEB_ORIGIN } from "./env";
 
-const PORT = Number(process.env.PORT ?? 4000);
-const DB_PATH = process.env.DB_PATH ?? "./data/game.db";          // server/.env.example
-const ORIGINS = (process.env.WEB_ORIGIN ?? "http://localhost:3000") // server/.env.example; comma-separated for several
-  .split(",").map(s => s.trim()).filter(Boolean);
+const ORIGINS = WEB_ORIGIN.split(",").map(s => s.trim()).filter(Boolean); // comma-separated for several
 
 const db = openDb(DB_PATH);
 resetAllConnected(db); // every socket died with the previous process

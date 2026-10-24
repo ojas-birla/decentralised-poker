@@ -1,6 +1,11 @@
-// Mirrors SPEC.md section 4. Replace with an import from "@poker/shared"
-// once shared/states.ts exists.
-export const TABLE_STATES = [
+import type { TableState } from "@poker/shared";
+
+// D4: TableState now comes from shared/types.ts (single source of truth).
+// Re-exported so the other web files can keep importing it from "@/lib/lobby".
+export type { TableState };
+
+// Runtime list of the 9 states (used to validate rows from the server).
+export const TABLE_STATES: readonly TableState[] = [
   "lobby",
   "waiting_deposits",
   "ready",
@@ -10,8 +15,7 @@ export const TABLE_STATES = [
   "settlement",
   "finished",
   "aborted",
-] as const;
-export type TableState = (typeof TABLE_STATES)[number];
+];
 
 export interface TableSummary {
   tableId: string; // decimal string (SPEC.md)
@@ -56,20 +60,34 @@ export const MOCK_TABLES: TableSummary[] = [
   },
 ];
 
+// D1: one row of the server's GET /api/tables (server/src/lobby.ts `OpenTable`)
+// mapped to the TableSummary the lobby page renders.
+//   totalHands -> hands,  seats[{seat,wallet}] -> players (seat order, creator first),
+//   state -> "lobby" (the endpoint only returns lobby tables).
 function normalise(raw: unknown): TableSummary | null {
-  const t = raw as Partial<TableSummary> | null;
-  if (!t || typeof t !== "object") return null;
-  if (typeof t.tableId !== "string" || !/^\d+$/.test(t.tableId)) return null;
-  if (typeof t.buyInWei !== "string" || !/^\d+$/.test(t.buyInWei)) return null;
-  if (typeof t.hands !== "number" || !Array.isArray(t.players)) return null;
-  if (typeof t.state !== "string") return null;
-  if (!(TABLE_STATES as readonly string[]).includes(t.state)) return null;
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.tableId !== "string" || !/^\d+$/.test(r.tableId)) return null;
+  if (typeof r.buyInWei !== "string" || !/^\d+$/.test(r.buyInWei)) return null;
+  if (typeof r.totalHands !== "number" || !Number.isInteger(r.totalHands)) return null;
+  if (!Array.isArray(r.seats)) return null;
+
+  const seats = (r.seats as unknown[])
+    .filter(
+      (s): s is { seat: number; wallet: string } =>
+        typeof s === "object" &&
+        s !== null &&
+        typeof (s as { seat?: unknown }).seat === "number" &&
+        typeof (s as { wallet?: unknown }).wallet === "string"
+    )
+    .sort((a, b) => a.seat - b.seat);
+
   return {
-    tableId: t.tableId,
-    buyInWei: t.buyInWei,
-    hands: t.hands,
-    players: t.players.map((p) => String(p).toLowerCase()), // SPEC.md: lowercase addresses
-    state: t.state as TableState,
+    tableId: r.tableId,
+    buyInWei: r.buyInWei,
+    hands: r.totalHands,
+    players: seats.map((s) => s.wallet.toLowerCase()), // SPEC.md: lowercase addresses
+    state: "lobby",
   };
 }
 
@@ -78,9 +96,10 @@ export async function fetchOpenTables(): Promise<TableSummary[]> {
     await new Promise((r) => setTimeout(r, 300)); // feel like a real request
     return MOCK_TABLES;
   }
-  const res = await fetch(`${SERVER_URL}/tables`);
+  const res = await fetch(`${SERVER_URL}/api/tables`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Server returned ${res.status}`);
   const data: unknown = await res.json();
-  if (!Array.isArray(data)) throw new Error("Server sent an unexpected response.");
-  return data.map(normalise).filter((t): t is TableSummary => t !== null);
+  const list = (data as { tables?: unknown } | null)?.tables;
+  if (!Array.isArray(list)) throw new Error("Server sent an unexpected response.");
+  return list.map(normalise).filter((t): t is TableSummary => t !== null);
 }

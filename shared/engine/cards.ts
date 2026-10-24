@@ -36,3 +36,9 @@ export function isValidDeck(deck: unknown): deck is CardId[] {
   }
   return true;
 }
+
+
+/** SPEC §2: id 0..51 -> two-character name, rank then suit. 0 -> "2c", 51 -> "As". */
+export function cardName(id: CardId): string {
+    return "23456789TJQKA"[id % 13] + "cdhs"[Math.floor(id / 13)];
+}
