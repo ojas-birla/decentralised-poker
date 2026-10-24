@@ -2,19 +2,22 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import type { ClientToServerEvents, ServerToClientEvents } from "@poker/shared";
 import { SERVER_URL, USE_MOCK } from "@/lib/lobby";
 import { ConnectionState } from "@/lib/statusLog";
 
+export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
 interface SocketContextValue {
-  socket: Socket | null; // null in mock mode, and for the first render
+  socket: PokerSocket | null; // null in mock mode, and for the first render
   connection: ConnectionState;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const socketRef = useRef<Socket | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const socketRef = useRef<PokerSocket | null>(null);
+  const [socket, setSocket] = useState<PokerSocket | null>(null);
   const [connection, setConnection] = useState<ConnectionState>(
     USE_MOCK ? "mock" : "connecting"
   );
@@ -26,11 +29,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     // React runs this effect, then its cleanup, then the effect again in dev.
     // The cleanup only disconnects and the second run reconnects the SAME
     // socket, so the server never sees two live connections.
-    if (!socketRef.current) {
-      socketRef.current = io(SERVER_URL, {
+        if (!socketRef.current) {
+      const created: PokerSocket = io(SERVER_URL, {
         autoConnect: false,
         transports: ["websocket"],
       });
+      socketRef.current = created;
     }
     const s = socketRef.current;
     setSocket(s);
