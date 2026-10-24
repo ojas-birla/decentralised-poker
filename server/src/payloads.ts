@@ -8,7 +8,7 @@ const isInt = (v: unknown): v is number => typeof v === "number" && Number.isSaf
 const inRange = (v: unknown, lo: number, hi: number): v is number => isInt(v) && v >= lo && v <= hi;
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-const POINT_OR_SCALAR = /^(0x)?[0-9a-fA-F]{64}$/; // 32 bytes (crypto module; 0x optional until Person B fixes the format)
+export const POINT_OR_SCALAR = /^[0-9a-f]{64}$/;// 32 bytes (crypto module; 0x mandator until Person B fixed the format)
 const HASH32 = /^0x[0-9a-fA-F]{64}$/;
 const SIG65 = /^0x[0-9a-fA-F]{130}$/;
 

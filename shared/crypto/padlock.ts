@@ -30,6 +30,7 @@ const ORDER = ristretto255.Point.Fn.ORDER;
 
 /** Normalize a bigint into [1, ORDER-1]. */
 function normScalar(n: bigint): bigint {
+  if (n <= 0n || n >= ORDER) throw new Error("padlock scalar out of [1, ORDER-1]");
   const m = ((n % ORDER) + ORDER) % ORDER;
   return m === 0n ? 1n : m;
 }
