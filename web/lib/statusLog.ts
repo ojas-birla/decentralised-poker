@@ -139,6 +139,10 @@ function describeEntry(row: EventRow): LogEntry | null {
         : "no chips moved";
       return { id, kind: "info", text: `Hand ${body.handNumber} settled: ${won}.` };
     }
+    case "street": {
+      const label = body.street === "flop" ? "Flop" : body.street === "turn" ? "Turn" : "River";
+      return { id, kind: "info", text: `${label} dealt.` };
+    }
     case "table_state":
       return { id, kind: "info", text: `Table is now ${body.state.replace(/_/g, " ")}.` };
     case "abort":

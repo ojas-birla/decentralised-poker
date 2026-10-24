@@ -60,3 +60,10 @@ export function mergeResult(prev: HandResult | null, next: HandResult | null): H
   if (prev && prev.tableId === next.tableId && prev.handNumber >= next.handNumber) return prev;
   return next;
 }
+
+/** Total chips won per seat. A seat can appear in several awards (main pot and a side pot). */
+export function wonBySeat(awards: HandResult["awards"]): Map<number, number> {
+  const totals = new Map<number, number>();
+  for (const a of awards) totals.set(a.seat, (totals.get(a.seat) ?? 0) + a.amount);
+  return totals;
+}

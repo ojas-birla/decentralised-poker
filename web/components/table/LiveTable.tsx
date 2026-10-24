@@ -143,7 +143,6 @@ export default function LiveTable({ tableId }: { tableId: string }) {
           <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
         )}
         <p className="text-lg font-semibold">Game finished</p>
-        <p className="text-lg font-semibold">Game finished</p>
         <ul className="space-y-1 text-sm">
           {state.seats.map((p, i) => (
             <li key={i}>
