@@ -21,6 +21,7 @@ export interface LogEntry {
 export type TableNotice =
   | { kind: "waiting_for_player"; seat: number; deadlineMs: number } // 60 s reconnect grace
   | { kind: "hand_aborted"; reason: AbortReason }
+  | { kind: "seat_disconnected"; seat: number; deadlineMs?: number } // D5: it is their turn and they are offline
   | { kind: "checkpoint_mismatch" }; // our balances differ from the others, so we do not sign
 
 export interface Banner {
@@ -79,6 +80,12 @@ export function buildBanner(
         text: `Hand aborted: ${ABORT_TEXT[notice.reason]}. ${outcome}`,
       };
     }
+    case "seat_disconnected":
+      return {
+        level: "warn",
+        text: `Seat ${notice.seat + 1} is disconnected. They will be auto-folded when the timer runs out.`,
+        deadlineMs: notice.deadlineMs,
+      };
     case "checkpoint_mismatch":
       return {
         level: "error",
