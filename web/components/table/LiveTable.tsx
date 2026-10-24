@@ -22,6 +22,9 @@ import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
 import PayoutPanel from "./PayoutPanel";
 import ExitPanel from "./ExitPanel";
+import FinalPayoutCard from "./FinalPayoutCard";
+import FinishedScreen from "./FinishedScreen";
+import { cardName } from "@poker/shared/engine/cards";
 
 function connectionFor(phase: TablePhase): ConnectionState {
   switch (phase) {
@@ -201,38 +204,46 @@ export default function LiveTable({ tableId }: { tableId: string }) {
 
   if (isWaitingState(state.tableState)) {
     return (
-      <div className="space-y-4">
-        {networkWarning}
-        <StatusBanner banner={banner} />
-        <WaitingRoom room={buildRoom(tableId, state, info, players, events)} myAddress={address} />
-        <ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} />
-      </div>
+      <WaitingRoom
+        room={buildRoom(tableId, state, info, players, events)}
+        myAddress={address}
+        notices={
+          <>
+            {networkWarning}
+            <StatusBanner banner={banner} />
+          </>
+        }
+        exit={<ExitPanel tableId={tableId} tableState={state.tableState} mySeat={mySeat} variant="inline" />}
+      />
     );
   }
 
   if (state.tableState === "finished") {
-    const buyIn = info && /^\d+$/.test(info.buyInWei) ? BigInt(info.buyInWei) : 0n;
+    const seatsData = state.seats.map((p, i) => ({
+      address: (info?.seats.find((x) => x.seat === i)?.wallet || p.wallet || "").toLowerCase() || null,
+      chips: p.chips,
+    }));
     return (
-      <div className="space-y-4">
-        {header}
-        {networkWarning}
-        <StatusBanner banner={banner} />
-        {lastResult.visible && lastResult.result && (
-          <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
-        )}
-        <p className="text-lg font-semibold">Game finished</p>
-        <ul className="space-y-1 text-sm">
-          {state.seats.map((p, i) => (
-            <li key={i}>
-              Seat {i + 1}
-              {mySeat === i ? " (you)" : ""}: {p.chips} chips
-              {buyIn > 0n && <> · {weiToEth(((BigInt(p.chips) * buyIn) / 1000n).toString())} test ETH</>}
-            </li>
-          ))}
-        </ul>
-        <PayoutPanel tableId={tableId} mySeat={mySeat} />
-        <BackToLobby />
-      </div>
+      <FinishedScreen
+        tableId={tableId}
+        seats={seatsData}
+        mySeat={mySeat}
+        board={lastResult.result?.board ?? state.board.map(cardName)}
+        buyInWei={info?.buyInWei ?? null}
+        totalHands={info?.totalHands ?? null}
+        notices={
+          <>
+            {networkWarning}
+            <StatusBanner banner={banner} />
+          </>
+        }
+        payout={<FinalPayoutCard tableId={tableId} mySeat={mySeat} />}
+        overlay={
+          lastResult.visible && lastResult.result ? (
+            <HandResultPanel result={lastResult.result} mySeat={mySeat} onDismiss={lastResult.dismiss} />
+          ) : null
+        }
+      />
     );
   }
 

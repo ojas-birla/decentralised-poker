@@ -9,7 +9,42 @@ import { cancelTableTx, emergencyRefundTx, readRefundInfo, refundState, type Ref
 
 const STARTED_STATES = ["waiting_deposits", "ready", "dealing", "betting", "showdown", "settlement"];
 
-export default function ExitPanel({ tableId, tableState, mySeat }: { tableId: string; tableState: string; mySeat: number | null }) {
+/** The "Want out?" row of the waiting room. Presentational, so the mock preview can show it without sending anything. */
+export function CancelRefundRow({ onClick, disabled }: { onClick?: () => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <p className="flex max-w-[520px] items-start gap-3 text-sm leading-relaxed text-slate-400">
+        <svg viewBox="0 0 24 24" className="mt-0.5 h-6 w-6 shrink-0 text-indigo-400" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 8h.01" />
+        </svg>
+        <span>Want out? Cancelling closes this table for everyone and refunds every deposit (each player will then need to click Withdraw).</span>
+      </p>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className="flex h-12 items-center gap-2.5 rounded-xl border border-red-500/70 bg-red-500/10 px-6 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 21a9 9 0 100-18 9 9 0 000 18zM9 9l6 6M15 9l-6 6" />
+        </svg>
+        Cancel table and refund
+      </button>
+    </div>
+  );
+}
+
+export default function ExitPanel({
+  tableId,
+  tableState,
+  mySeat,
+  variant = "panel",
+}: {
+  tableId: string;
+  tableState: string;
+  mySeat: number | null;
+  variant?: "panel" | "inline"; // inline: drawn without its own box, for the waiting room card
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -51,8 +86,20 @@ export default function ExitPanel({ tableId, tableState, mySeat }: { tableId: st
   const btn = "rounded-lg border border-red-500 px-3 py-1 text-sm text-red-300 hover:bg-red-950 disabled:opacity-50";
 
   return (
-    <section className="space-y-2 rounded-2xl border border-[#d9a928]/60 bg-[#14110a] p-3 text-sm text-slate-200">
-      {tableState === "lobby" && (
+    <section
+      className={
+        variant === "inline" && tableState === "lobby"
+          ? "space-y-3 text-sm text-slate-200"
+          : "space-y-2 rounded-2xl border border-[#d9a928]/60 bg-[#14110a] p-3 text-sm text-slate-200"
+      }
+    >
+      {tableState === "lobby" && variant === "inline" && (
+        <CancelRefundRow
+          disabled={busy !== null || done}
+          onClick={() => { if (window.confirm("Cancel this table for ALL players and refund the deposits?")) void run("Cancelling", cb => cancelTableTx(tableId, cb)); }}
+        />
+      )}
+      {tableState === "lobby" && variant === "panel" && (
         <>
           <p>Want out? Cancelling closes this table for everyone and refunds every deposit (each player then clicks Withdraw).</p>
           <button

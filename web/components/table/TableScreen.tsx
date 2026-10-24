@@ -11,6 +11,12 @@ import { MOCK_SCENARIOS, getMockRoom } from "@/lib/waitingRoom";
 import PokerTable from "./PokerTable";
 import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
+import FinishedScreen from "./FinishedScreen";
+import { CancelRefundRow } from "./ExitPanel";
+import { FinalPayoutView } from "./FinalPayoutCard";
+
+// In mock mode you sit in seat 1 of the sample rooms, so the "You" styling shows.
+const MOCK_ME = "0x" + "1".repeat(40);
 
 function describe(a: PlayerAction): string {
   switch (a.type) {
@@ -32,18 +38,20 @@ export default function TableScreen({ tableId }: { tableId: string }) {
   const [simulateLost, setSimulateLost] = useState(false);
 
   const waitingCount = MOCK_SCENARIOS.length;
+  const finishedIndex = waitingCount + MOCK_TABLE_VIEWS.length; // extra preview: the final screen
   const labels = [
     ...MOCK_SCENARIOS.map((s) => s.label),
     ...MOCK_TABLE_VIEWS.map((s) => s.label),
+    "Game finished",
   ];
 
   // Rebuilt when you pick a preview, which also restarts the countdowns.
   const playView = useMemo(
     () =>
-      preview >= waitingCount
+      preview >= waitingCount && preview < finishedIndex
         ? MOCK_TABLE_VIEWS[preview - waitingCount].build(tableId, Date.now())
         : null,
-    [preview, tableId, waitingCount]
+    [preview, tableId, waitingCount, finishedIndex]
   );
   const notice = useMemo(
     () => (playView ? MOCK_NOTICES[noticeIdx].build(Date.now()) : null),
@@ -120,7 +128,34 @@ export default function TableScreen({ tableId }: { tableId: string }) {
         </div>
       </details>
 
-      {shownView ? (
+      {preview === finishedIndex ? (
+        <FinishedScreen
+          tableId={tableId}
+          mySeat={2}
+          seats={[
+            { address: "0x1111111111111111111111111111111111111111", chips: 1000 },
+            { address: "0x2222222222222222222222222222222222222222", chips: 1000 },
+            { address: "0x3333333333333333333333333333333333333333", chips: 1005 },
+            { address: "0x4444444444444444444444444444444444444444", chips: 995 },
+          ]}
+          board={["As", "Kh", "Jd", "7c", "3h"]}
+          buyInWei="1000000000000000"
+          totalHands={10}
+          payout={
+            <FinalPayoutView
+              title="Payout"
+              shareWei="1005000000000000"
+              step={{ kind: "submit" }}
+              busy={null}
+              error={null}
+              lastTx={null}
+              onSubmit={() => setLastAction("submit final result")}
+              onFinalize={() => {}}
+              onWithdraw={() => {}}
+            />
+          }
+        />
+      ) : shownView ? (
         <PokerTable
           view={shownView}
           log={MOCK_LOGS[preview - waitingCount]}
@@ -129,10 +164,12 @@ export default function TableScreen({ tableId }: { tableId: string }) {
           onAction={(a) => setLastAction(describe(a))}
         />
       ) : (
-        <>
-          <StatusBanner banner={banner} />
-          <WaitingRoom room={getMockRoom(tableId, preview)} myAddress={address} />
-        </>
+        <WaitingRoom
+          room={getMockRoom(tableId, preview)}
+          myAddress={address ?? MOCK_ME}
+          notices={<StatusBanner banner={banner} />}
+          exit={getMockRoom(tableId, preview).state === "lobby" ? <CancelRefundRow disabled /> : null}
+        />
       )}
 
     </div>
