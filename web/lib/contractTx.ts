@@ -14,7 +14,7 @@ export interface TxProgress {
 
 const STATUS_OPEN = 1; // contract enum Status { None, Open, Started, ... }
 
-async function getContract(): Promise<Contract> {
+export async function getContract(): Promise<Contract> {
   const eth = getEthereum();
   if (!eth) throw new Error("MetaMask not found. Install it from metamask.io.");
   const provider = new BrowserProvider(eth);
@@ -107,6 +107,18 @@ const REVERT_TEXT: Record<string, string> = {
   SESSION_KEY_TAKEN: "Session key problem. Reload the page and try again.",
   NOT_OPEN: "This table is full or no longer open.",
   ALREADY_SEATED: "You already have a seat at this table.",
+  // 2.7: payout
+  NOT_A_PLAYER: "This MetaMask account did not play at this table. Switch to the account that joined.",
+  STALE_CHECKPOINT: "A newer result is already on-chain.",
+  WINDOW_CLOSED: "The challenge window is already closed.",
+  WINDOW_OPEN: "The challenge window is still open. Wait for the countdown to finish.",
+  NO_CHECKPOINT: "No result has been submitted on-chain yet.",
+  NOT_WITHDRAWABLE: "The table is not finalized yet.",
+  NOTHING_TO_WITHDRAW: "Nothing left to withdraw for this account.",
+  BAD_SIGNATURE: "One of the 4 signatures does not match its session key.",
+  BALANCE_MISMATCH: "The result does not add up to the total deposited.",
+  TOO_FEW_SIGNERS: "Not enough signatures.",
+  NOT_STARTED: "This table is not in a started state on-chain.",
 };
 
 /** Turns any ethers / MetaMask error into one readable sentence. */

@@ -10,7 +10,7 @@ import { resetAllConnected } from "./reconnect";
 import { TurnTimerScheduler } from "./timers";
 import { recoverAll } from "./lifecycle";
 import { attachSockets, type SocketLayer } from "./socket";
-import { startChainWatcher } from "./chain";
+import { ChainWatcher, type LogSource } from "./chain/watcher";
 
 export interface GameServerOptions {
   /** SQLite file (":memory:" if neither this nor `db` is given). */
@@ -21,6 +21,14 @@ export interface GameServerOptions {
   port: number;
   origins: string[];
   skipChain?: boolean;
+  /** JSON-RPC URL for the chain watcher (index.ts passes RPC_URL). */
+  rpcUrl?: string;
+  /** Tests inject a fake chain here instead of rpcUrl. */
+  chainSource?: LogSource;
+  chainStartBlock?: number;
+  chainPollMs?: number;
+  /** Blocks a log must be buried under before the server believes it (default 2). */
+  chainConfirmations?: number;
   log?: (msg: string) => void;
 }
 
@@ -49,8 +57,28 @@ export async function startGameServer(o: GameServerOptions): Promise<GameServer>
   });
   scheduler.start();
 
-  const watcher = o.skipChain ? null : startChainWatcher(db, { onTableChanged: id => sockets.tableChanged(id) });
-  if (o.skipChain) log("POKER_SKIP_CHAIN=1: chain watcher is off");
+  // SPEC-2.4: the only way a seat becomes "deposited" is a confirmed PlayerJoined log read by this watcher.
+  // Every applied event runs the lifecycle (waiting_deposits -> ready needs 4 deposits AND 4 `ready`) and a broadcast.
+  let watcher: ChainWatcher | null = null;
+  if (o.skipChain) {
+    log("POKER_SKIP_CHAIN=1: chain watcher is off");
+  } else {
+    watcher = new ChainWatcher({
+      db,
+      rpcUrl: o.rpcUrl,
+      source: o.chainSource,
+      startBlock: o.chainStartBlock,
+      pollMs: o.chainPollMs,
+      confirmations: o.chainConfirmations,
+      log: m => log(`[chain] ${m}`),
+      onApplied: (ev, r) => {
+        if (r.status !== "applied") return;
+        log(`[chain] block ${ev.blockNumber} ${ev.type} table ${ev.tableId} applied`);
+        sockets.tableChanged(ev.tableId);
+      },
+    });
+    watcher.start();
+  }
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

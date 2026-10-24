@@ -20,6 +20,7 @@ import HandResultPanel from "./HandResultPanel";
 import PokerTable from "./PokerTable";
 import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
+import PayoutPanel from "./PayoutPanel";
 
 function connectionFor(phase: TablePhase): ConnectionState {
   switch (phase) {
@@ -213,6 +214,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
             </li>
           ))}
         </ul>
+        <PayoutPanel tableId={tableId} mySeat={mySeat} />
         <BackToLobby />
       </div>
     );

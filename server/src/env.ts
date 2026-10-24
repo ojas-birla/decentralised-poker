@@ -16,3 +16,5 @@ export const DB_PATH = str("DB_PATH", "./data/game.db");
 export const WEB_ORIGIN = str("WEB_ORIGIN", "http://localhost:3000"); // comma-separated for several
 /** POKER_SKIP_CHAIN=1 disables the chain watcher (bot tests with --seed). */
 export const SKIP_CHAIN = process.env.POKER_SKIP_CHAIN === "1";
+/** How many blocks deep a deposit must be before the server counts it (Base Sepolia: 2 blocks is about 4 s). */
+export const CHAIN_CONFIRMATIONS = Math.max(0, Number(str("CHAIN_CONFIRMATIONS", "2")) || 0);
