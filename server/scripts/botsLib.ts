@@ -103,6 +103,7 @@ export class Bot {
   private stopped = false;
   private pending = new Set<() => void>();
   private junkTimer: ReturnType<typeof setInterval> | null = null;
+  private junkSent = 0;
   private lastEnv: Envelope | null = null;
   private readonly weiPerChip: bigint;
   private readonly think: [number, number];
@@ -390,7 +391,10 @@ export class Bot {
     ];
     const raw = this.sock as unknown as { emit(ev: string, ...args: unknown[]): void };
     for (let i = 0; i < 2; i++) {
-      raw.emit("envelope", pool[randomInt(pool.length)], (a: EnvelopeAck | undefined) => {
+      // The first junk message always has a string tableId, so the server logs its reject.
+      // Without this, a short game could send only unloggable junk and the rejects table stayed empty.
+      const junk = this.junkSent++ === 0 ? { ...base, sig: "0x00" } : pool[randomInt(pool.length)];
+      raw.emit("envelope", junk, (a: EnvelopeAck | undefined) => {
         if (a && a.ok === false) this.count(a.reject.code);
       });
     }
