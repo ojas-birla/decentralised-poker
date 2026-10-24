@@ -57,6 +57,7 @@ export type ServerLogBody =
   | { kind: "auto"; seat: Seat; action: "fold" | "check"; handNumber: number }
   | { kind: "table_state"; state: GameState["tableState"] }
   | { kind: "hand_started"; handNumber: number; dealerSeat: Seat }
+  | { kind: "street"; handNumber: number; street: "flop" | "turn" | "river" }
   | { kind: "hand_settled"; handNumber: number; awards: GameState["awards"] }
   | { kind: "abort"; handNumber: number; reason: AbortReason };
 

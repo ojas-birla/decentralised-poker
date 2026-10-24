@@ -9,6 +9,7 @@ import { advanceStreet, resolveShowdown, startHand } from "@poker/shared";
 import type { GameState } from "@poker/shared";
 import type { Db } from "./db";
 import { appendEvent, getPlayers, loadGame, saveState } from "./store";
+import { logStreets } from "./streetLog";
 import { getTimer, syncTurnTimer } from "./timers";
 
 /** What the server writes into the log (kind "server"). Never put cards or the deck in here. */
@@ -94,7 +95,9 @@ function stepOnce(db: Db, tableId: string, makeDeck: () => number[], now: number
       // Betting is closed from the start (everyone all-in from the blinds): run the streets out.
       // Only Phase 2: with no dev deck (Phase 3) the engine waits for unlocks instead.
       if (s.toActSeat !== null || s.deck === null) return false;
-      commit(db, tableId, advanceStreet(s), [], now);
+      const next = advanceStreet(s);
+      logStreets(db, tableId, s, next, now);
+      commit(db, tableId, next, [], now);
       return true;
     }
 
