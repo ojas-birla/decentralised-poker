@@ -4,31 +4,14 @@
 // Authentication is a signed `join` envelope, validated by the normal ingest() pipeline (signature, seat, seq, hand 0,
 // registered session key). So reconnecting needs no new message type, and the client's seq counter stays in step.
 // SPEC §4 must allow `join` in every state except `aborted` (see shared/states.ts).
-import type { GameState, Reject, Seat } from "@poker/shared";
+import type { GameState, PlayerPresence, ReconnectView, Reject, Seat } from "@poker/shared";
 import type { Db } from "./db";
 import { ingest, type IngestDeps } from "./ingest";
-import { getEvents, getPlayer, getPlayers, loadGame, saveState, setConnected, type EventRow } from "./store";
+import { getEvents, getPlayer, getPlayers, lastEventIndex, loadGame, saveState, setConnected } from "./store";
 import { getTimer } from "./timers";
 
-export interface PlayerPresence {
-  seat: Seat;
-  wallet: string;
-  connected: boolean;
-}
-
-export interface ReconnectView {
-  seat: Seat;
-  /** Safe snapshot for THIS seat: see publicState(). */
-  state: GameState;
-  /** Log entries from `fromIndex` on, in order (SPEC §1). */
-  events: EventRow[];
-  fromIndex: number;
-  /** The seq the client must use for its next message (the server's count, not the client's own). */
-  nextSeq: number;
-  /** Whose clock is running and when it ends (unix ms), or null. */
-  timer: { seat: Seat; deadline: number } | null;
-  players: PlayerPresence[];
-}
+// The wire types live in shared/protocol.ts (SPEC-2.1 §4). Re-exported so older imports keep working.
+export type { PlayerPresence, ReconnectView };
 
 export type ReconnectResult =
   | { ok: true; index: number; view: ReconnectView }
@@ -63,11 +46,12 @@ export function buildView(db: Db, tableId: string, seat: Seat, fromIndex = 0): R
   return {
     seat,
     state: publicState(game.state, seat),
-    events: getEvents(db, tableId, from),
+    events: getEvents(db, tableId, from) as ReconnectView["events"],
     fromIndex: from,
     nextSeq: player.lastSeq + 1,
     timer: timer ? { seat: timer.seat, deadline: timer.deadline } : null,
     players: getPlayers(db, tableId).map(p => ({ seat: p.seat, wallet: p.wallet, connected: p.connected })),
+    lastIndex: lastEventIndex(db, tableId),
   };
 }
 
