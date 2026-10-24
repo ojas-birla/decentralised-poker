@@ -1,5 +1,6 @@
 "use client";
 
+import { MOCK_DEALING, busyLabel, dealingBanner } from "@/lib/dealingUi";
 import LiveTable from "./LiveTable";
 import { useMemo, useState } from "react";
 import { useSocket } from "@/components/SocketProvider";
@@ -30,12 +31,13 @@ function describe(a: PlayerAction): string {
 }
 
 export default function TableScreen({ tableId }: { tableId: string }) {
-  const { address } = useWallet();
+    const { address } = useWallet();
   const { connection } = useSocket();
   const [preview, setPreview] = useState(0);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [noticeIdx, setNoticeIdx] = useState(0);
   const [simulateLost, setSimulateLost] = useState(false);
+  const [dealingIdx, setDealingIdx] = useState(0);
 
   const waitingCount = MOCK_SCENARIOS.length;
   const finishedIndex = waitingCount + MOCK_TABLE_VIEWS.length; // extra preview: the final screen
@@ -70,7 +72,10 @@ export default function TableScreen({ tableId }: { tableId: string }) {
     };
   }, [playView, notice]);
 
-  const banner = buildBanner(simulateLost ? "disconnected" : connection, notice);
+  const dealing = playView?.state === "dealing" ? MOCK_DEALING[dealingIdx].ui : null;
+  const banner =
+    buildBanner(simulateLost ? "disconnected" : connection, notice) ??
+    (dealing ? dealingBanner(dealing) : null);
 
   if (!USE_MOCK) return <LiveTable tableId={tableId} />;
 
@@ -120,6 +125,7 @@ export default function TableScreen({ tableId }: { tableId: string }) {
             Simulate lost connection
           </button>
         </div>
+<<<<<<< HEAD
         {lastAction && (
           <p className="text-slate-300">
             You chose &quot;{lastAction}&quot;. Nothing is sent to the server.
@@ -127,6 +133,24 @@ export default function TableScreen({ tableId }: { tableId: string }) {
         )}
         </div>
       </details>
+=======
+                <div>
+          Dealing:{" "}
+          {MOCK_DEALING.map((d, i) => (
+            <button
+              key={d.label}
+              onClick={() => setDealingIdx(i)}
+              disabled={playView?.state !== "dealing"}
+              className={`mr-2 mb-1 rounded border px-2 py-0.5 disabled:opacity-40 ${
+                i === dealingIdx ? "bg-black text-white" : ""
+              }`}
+            >
+              {d.label.replace("Dealing: ", "")}
+            </button>
+          ))}
+        </div>
+      </div>
+>>>>>>> af98599 (web: add dealing UI helpers and mock previews)
 
       {preview === finishedIndex ? (
         <FinishedScreen
@@ -160,7 +184,11 @@ export default function TableScreen({ tableId }: { tableId: string }) {
           view={shownView}
           log={MOCK_LOGS[preview - waitingCount]}
           banner={banner}
+<<<<<<< HEAD
           escrow={{ deposit: "0.01 ETH", total: "0.04 ETH" }}
+=======
+          busy={dealing ? busyLabel(dealing) : null}
+>>>>>>> af98599 (web: add dealing UI helpers and mock previews)
           onAction={(a) => setLastAction(describe(a))}
         />
       ) : (

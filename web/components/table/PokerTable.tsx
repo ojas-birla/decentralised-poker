@@ -51,6 +51,7 @@ export default function PokerTable({
   log,
   banner,
   pending = false,
+  busy = null,
   onAction,
   resultSlot,
   extras,
@@ -60,6 +61,7 @@ export default function PokerTable({
   log: LogEntry[];
   banner: Banner | null;
   pending?: boolean; // an action is in flight: the whole action bar is disabled
+  busy?: string | null; // dealing spinner text (null = no spinner)
   onAction: (action: PlayerAction) => void;
   resultSlot?: ReactNode; // last hand result, shown floating over the table
   extras?: ReactNode; // small panels (exit/refund, errors), docked at the left
@@ -145,6 +147,7 @@ export default function PokerTable({
           </button>
         </div>
 
+<<<<<<< HEAD
         {/* Docked right panel */}
         {panel && (
           <div className="absolute right-6 top-[86px] z-40 max-h-[calc(100%-340px)] w-[360px] space-y-3 overflow-auto rounded-2xl border border-[#2a2a3d] bg-[#0c0c14] p-4 text-sm shadow-2xl">
@@ -186,6 +189,42 @@ export default function PokerTable({
                 {escrow && <EscrowPanel escrow={escrow} className="min-[1680px]:hidden" />}
               </>
             )}
+=======
+      <p
+        className={`mx-auto w-fit rounded-full px-3 py-1 text-sm ${
+          myTurn ? "bg-green-500 font-semibold text-slate-900" : "bg-slate-700"
+        }`}
+      >
+        {status}
+      </p>
+
+      <StatusBanner banner={banner} />
+            {busy && (
+        <p
+          role="status"
+          className="mx-auto flex w-fit items-center gap-2 text-sm text-slate-200"
+        >
+          <span
+            aria-hidden
+            className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"
+          />
+          {busy}
+        </p>
+      )}
+
+      {/* Event log panel, opened with the button above */}
+      {logOpen && (
+        <div className="absolute right-4 top-14 z-20 w-72 rounded-xl border border-slate-600 bg-slate-900 p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <p className="font-semibold">What just happened</p>
+            <button
+              onClick={() => setLogOpen(false)}
+              aria-label="Close log"
+              className="rounded px-2 text-slate-300"
+            >
+              ×
+            </button>
+>>>>>>> af98599 (web: add dealing UI helpers and mock previews)
           </div>
         )}
 
