@@ -31,7 +31,13 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-export default function CreateHeader({ wide = false }: { wide?: boolean }) {
+export default function CreateHeader({
+  wide = false,
+  logoHref = "/",
+}: {
+  wide?: boolean;
+  logoHref?: string;
+}) {
   const { hasWallet, address, isConnecting, isWrongNetwork, connect, switchNetwork } = useWallet();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -66,7 +72,7 @@ export default function CreateHeader({ wide = false }: { wide?: boolean }) {
   return (
     <header className={`mx-auto flex w-full items-center justify-between px-6 py-8 ${wide ? "max-w-[1280px]" : "max-w-[1160px]"}`}>
       <Link
-        href="/lobby"
+        href={logoHref}
         className="font-display text-[32px] font-semibold leading-none tracking-tight text-[#e3bb5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#f5c542]"
       >
         Ante Chain

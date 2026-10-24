@@ -141,9 +141,9 @@ export default function LobbyPage() {
 
   return (
     <div className="table-stage fixed inset-0 z-10 !m-0 overflow-auto font-grotesk text-white">
-      <CreateHeader />
+      <CreateHeader wide />
 
-      <div className="mx-auto grid w-full max-w-[1160px] items-start gap-10 px-6 pb-16 pt-2 lg:grid-cols-[minmax(0,640px)_minmax(0,1fr)] lg:gap-12">
+      <div className="mx-auto grid w-full max-w-[1280px] items-start gap-10 px-6 pb-16 pt-2 lg:grid-cols-[minmax(0,780px)_minmax(0,1fr)] lg:gap-12">
         {/* Left: table list */}
         <div>
           <section className="rounded-2xl border border-[#2a2a3d] bg-[#0d0d16]/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">

@@ -20,7 +20,7 @@ import HandResultPanel from "./HandResultPanel";
 import PokerTable from "./PokerTable";
 import StatusBanner from "./StatusBanner";
 import WaitingRoom from "./WaitingRoom";
-import PayoutPanel from "./PayoutPanel";
+import CancelledScreen from "./CancelledScreen";
 import ExitPanel from "./ExitPanel";
 import FinalPayoutCard from "./FinalPayoutCard";
 import FinishedScreen from "./FinishedScreen";
@@ -168,15 +168,7 @@ export default function LiveTable({ tableId }: { tableId: string }) {
   const mySeatForRefund =
     mySeat ?? (address ? info?.seats.find((s) => s.wallet === address)?.seat ?? null : null);
   if (info?.state === "aborted" || state?.tableState === "aborted") {
-    return (
-      <div className="space-y-4">
-        {header}
-        {networkWarning}
-        <p className="text-sm">This table was cancelled or refunded.</p>
-        <PayoutPanel tableId={tableId} mySeat={mySeatForRefund} />
-        <BackToLobby />
-      </div>
-    );
+    return <CancelledScreen tableId={tableId} mySeat={mySeatForRefund} notices={networkWarning} />;
   }
   if (phase === "error") {
     return (
