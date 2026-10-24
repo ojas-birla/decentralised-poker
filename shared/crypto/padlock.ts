@@ -69,3 +69,13 @@ export function commitPadlock(padlock: Padlock, tableId: string, handNumber: num
 export function verifyCommitment(commitmentHex: string, padlock: Padlock, tableId: string, handNumber: number): boolean {
   return commitPadlock(padlock, tableId, handNumber) === commitmentHex;
 }
+
+export function isValidPointHex(hex: string): boolean {
+  if (!/^[0-9a-f]{64}$/.test(hex)) return false;
+  try {
+    ristretto255.Point.fromHex(hex); // throws on an invalid or non-canonical encoding
+    return true;
+  } catch {
+    return false;
+  }
+}
