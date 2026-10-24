@@ -46,7 +46,7 @@ export function toTableView({
       currentBet: p.committedThisStreet,
       folded: p.hasFolded,
       allIn: p.isAllIn,
-      busted: p.chips === 0 && p.committedThisHand === 0,
+      busted: p.chips === 0 && !p.inHand,
       isDealer: handInPlay && i === state.dealerSeat,
       // Only set when the server actually sent both cards: that happens at a real showdown
       // for non-folded seats (publicState keeps them visible), never before.
