@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
+    "bots": "tsx scripts/bots.ts",
     "watch-chain": "tsx src/chain/watch.ts"
   },
   "dependencies": {

@@ -23,6 +23,9 @@ export interface LifecycleDeps {
   now?: () => number;
 }
 
+/** After a restart every turn clock has at least this long left, so reconnecting players are not folded on the first tick. */
+export const RESTART_GRACE_MS = 10_000;
+
 /** Fisher-Yates over 0..51 with crypto.randomInt. Never Math.random. */
 export function randomDeck(rand: (maxExclusive: number) => number = n => randomInt(n)): number[] {
   const d = Array.from({ length: 52 }, (_, i) => i);
@@ -143,6 +146,11 @@ export function afterChange(db: Db, tableId: string, deps: LifecycleDeps = {}): 
 
 /** Call once at server start, after resetAllConnected(). Finishes anything a crash left half-done. */
 export function recoverAll(db: Db, deps: LifecycleDeps = {}): string[] {
+  // C8: a clock that ran out while the server was down must not fire before the players have had a chance to reconnect.
+  // Deadlines still in the future are kept exactly as they are (plan 4.5: timers resume).
+  const graceUntil = (deps.now ? deps.now() : Date.now()) + RESTART_GRACE_MS;
+  db.prepare("UPDATE timers SET deadline = ? WHERE deadline < ?").run(graceUntil, graceUntil);
+
   const ids = (db.prepare(
     "SELECT table_id FROM games WHERE table_state NOT IN ('lobby', 'finished', 'aborted')"
   ).all() as { table_id: string }[]).map(r => r.table_id);
