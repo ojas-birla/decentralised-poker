@@ -18,3 +18,6 @@ export const WEB_ORIGIN = str("WEB_ORIGIN", "http://localhost:3000"); // comma-s
 export const SKIP_CHAIN = process.env.POKER_SKIP_CHAIN === "1";
 /** How many blocks deep a deposit must be before the server counts it (Base Sepolia: 2 blocks is about 4 s). */
 export const CHAIN_CONFIRMATIONS = Math.max(0, Number(str("CHAIN_CONFIRMATIONS", "2")) || 0);
+/** POKER_DEV_DECK=1 keeps the Phase 2 server-dealt deck (SPEC-PHASE3 D8). Read lazily so tests can flip it. */
+export const devDeckEnabled = (): boolean => process.env.POKER_DEV_DECK === "1";
+export const DEV_DECK = devDeckEnabled();

@@ -4,7 +4,7 @@
 import type http from "node:http";
 import { Server, type Socket } from "socket.io";
 import type {
-  ClientToServerEvents, EnvelopeAck, EventRow, HelloAck, HelloRequest, Reject, RejectCode, Seat, ServerToClientEvents,
+   AbortMsg, ClientToServerEvents, EnvelopeAck, EventRow, HelloAck, HelloRequest, Reject, RejectCode, Seat, ServerToClientEvents,
 } from "@poker/shared";
 import type { Db } from "./db";
 import type { IngestDeps } from "./ingest";
@@ -70,9 +70,14 @@ export function attachSockets(httpServer: http.Server, db: Db, deps: IngestDeps,
     lastSent.set(tableId, last);
 
     // 1. New log entries to everyone at the table, in order.
+    //    An `abort` log entry is followed at once by the `abort` event (C-7); the per-seat `state` comes after (step 2).
     if (last >= from) {
       for (const entry of getEvents(db, tableId, from)) {
         io.to(roomOf(tableId)).emit("event", { tableId, entry: entry as EventRow });
+        const body = entry.body as { kind?: string; handNumber?: number; reason?: AbortMsg["reason"] };
+        if (entry.kind === "server" && body.kind === "abort" && body.reason !== undefined) {
+          io.to(roomOf(tableId)).emit("abort", { tableId, handNumber: body.handNumber ?? entry.handNumber, reason: body.reason });
+        }
       }
     }
     // 2. Each seat gets ITS OWN view. Never one shared `state` emit: that would leak hole cards.

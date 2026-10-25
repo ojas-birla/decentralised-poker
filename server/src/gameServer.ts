@@ -52,6 +52,11 @@ export async function startGameServer(o: GameServerOptions): Promise<GameServer>
   const sockets = attachSockets(server, db, { verifySig: verifyEnvelope, verifyCheckpointSig }, o.origins);
 
   const scheduler = new TurnTimerScheduler(db, r => {
+    if (r.kind === "abort") {
+      log(`abort ${r.reason}: seat ${r.seat} stalled (table ${r.tableId}, hand ${r.handNumber})`);
+      sockets.tableChanged(r.tableId); // lifecycle logs hand_settled, then everyone gets the new state (C-7 adds the abort event)
+      return;
+    }
     log(`auto ${r.action} seat ${r.seat} (table ${r.tableId}, hand ${r.handNumber})`);
     sockets.onAuto(r);
   });

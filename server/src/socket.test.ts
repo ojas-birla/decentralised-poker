@@ -9,6 +9,8 @@ import { openDb, type Db } from "./db";
 import { addPlayer, createGame, getPlayer, setDeposited } from "./store";
 import type { IngestDeps } from "./ingest";
 import { attachSockets, type SocketLayer } from "./socket";
+import { CRYPTO_MS, fireDueTimers } from "./timers";
+process.env.POKER_DEV_DECK = "1"; // bots still rely on server dealing; remove when C-8 (bots use the real shuffle) lands
 
 type Client = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
 interface Bot {
@@ -159,5 +161,43 @@ describe("socket layer", () => {
     await hello(a); await hello(b);
     a.sock.disconnect();
     await waitFor(() => b.presence.some(p => p.seat === 0 && !p.connected) && b.state?.seats[0].connected === false);
+  });
+});
+// ---------------------------------------------------------------- C-7: abort broadcast
+
+/** 4 bots connected, hello'd and ready, with the REAL shuffle: the hand waits in "dealing". */
+async function dealingTable() {
+  const s = await startServer();
+  const bots = await Promise.all(([0, 1, 2, 3] as Seat[]).map(i => connectBot(s.url, i)));
+  for (const b of bots) expect((await hello(b)).ok).toBe(true);
+  for (const b of bots) expect((await send(b, "ready", { ready: true }, 0)).ok).toBe(true);
+  await waitFor(() => bots.every(b => b.state?.tableState === "dealing"));
+  return { ...s, bots };
+}
+
+describe("abort broadcast", () => {
+  it("after a crypto stall every seat gets `abort`, then a state with aborted set, and no hole cards", async () => {
+    delete process.env.POKER_DEV_DECK; // this file defaults to the dev deck; here we want the real shuffle
+    try {
+      const { db, layer, bots } = await dealingTable();
+      const fired = fireDueTimers(db, Date.now() + CRYPTO_MS + 1000); // nobody sent a commitment
+      expect(fired[0]).toMatchObject({ kind: "abort", reason: "CRYPTO_STALL" });
+      layer.tableChanged(T); // what gameServer's scheduler callback does
+
+      await waitFor(() => bots.every(b => b.state?.aborted !== undefined));
+      for (const b of bots) {
+        const abortAt = b.all.findIndex(m => m.name === "abort");
+        const stateAt = b.all.findIndex(m => m.name === "state" && (m.msg as { state: GameState }).state.aborted !== undefined);
+        expect(abortAt).toBeGreaterThanOrEqual(0);
+        expect(abortAt).toBeLessThan(stateAt); // abort first, then the state
+        expect(b.all[abortAt].msg).toMatchObject({ tableId: T, handNumber: 1, reason: "CRYPTO_STALL" });
+        expect(b.state!.tableState).toBe("settlement");
+        expect(b.state!.aborted).toEqual({ reason: "CRYPTO_STALL" });
+        for (const seat of [0, 1, 2, 3]) expect(b.state!.holeCards[seat]).toHaveLength(0); // nobody sees anybody's cards
+        expect(JSON.stringify(b.all)).not.toContain('"deck":[');
+      }
+    } finally {
+      process.env.POKER_DEV_DECK = "1";
+    }
   });
 });

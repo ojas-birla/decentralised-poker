@@ -1,13 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { legalActions, totalChips } from "@poker/shared";
-import type { MessageType, Seat } from "@poker/shared";
+import { abortHand, legalActions, totalChips } from "@poker/shared";
+import type { GameState, MessageType, Seat } from "@poker/shared";
+import { generatePadlock, commitPadlock, unlockCard, type Padlock } from "@poker/shared/crypto/padlock";
+import { lockAndShuffle } from "@poker/shared/crypto/shuffle";
+import { deriveDealing, nextDuties, type DealingEventRow } from "@poker/shared/crypto/dealingView";
 import { openDb, type Db } from "./db";
-import { addPlayer, createGame, getEvents, getPlayer, loadGame, setDeposited } from "./store";
+import { addPlayer, createGame, getEvents, getPlayer, loadGame, saveState, setDeposited } from "./store";
 import { ingest, type IngestDeps } from "./ingest";
-import { afterChange, randomDeck, recoverAll } from "./lifecycle";
+import { afterChange, randomDeck, recoverAll, type LifecycleDeps } from "./lifecycle";
 import { reconnect } from "./reconnect";
 import { getTimer } from "./timers";
 
@@ -178,5 +181,152 @@ describe("protocol fixes", () => {
     if (!r.ok) return;
     expect(r.view.lastIndex).toBe(getEvents(db, T).length - 1);
     expect(r.view.lastIndex).toBe(0);
+  });
+});
+// ---------------------------------------------------------------- Phase 3: real shuffle
+
+const R: LifecycleDeps = {}; // no randomDeck, no devDeck: real padlock shuffle (POKER_DEV_DECK must be unset)
+const rnd = (n: number) => crypto.getRandomValues(new Uint8Array(n));
+function randInt(max: number): number {
+  const limit = Math.floor(0x100000000 / max) * max;
+  const b = new Uint32Array(1);
+  do crypto.getRandomValues(b); while (b[0] >= limit);
+  return b[0] % max;
+}
+function sendR(db: Db, seat: number, type: MessageType, payload: unknown, handNumber: number) {
+  const r = ingest(db, deps, mk(db, seat, type, payload, handNumber));
+  if (!r.ok) throw new Error(`${type} from seat ${seat} rejected: ${r.reject.code} ${r.reject.message}`);
+  afterChange(db, T, R);
+}
+const readyAllR = (db: Db) => { for (let i = 0; i < 4; i++) sendR(db, i, "ready", { ready: true }, 0); };
+const CRYPTO_TYPES = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock"];
+const cryptoCount = (db: Db) =>
+  getEvents(db, T).filter(e => e.kind === "envelope" && CRYPTO_TYPES.includes((e.body as { type: string }).type)).length;
+const logRows = (db: Db) => getEvents(db, T) as unknown as DealingEventRow[];
+const isSettled = (s: GameState) => s.tableState === "settlement";
+
+/** Four honest players. Each keeps one padlock per hand, like the browser's padlock store. */
+function bots() {
+  const pads = new Map<string, Padlock>();
+  const pad = (hand: number, seat: number) => {
+    const k = `${hand}:${seat}`;
+    let p = pads.get(k);
+    if (!p) { p = generatePadlock(rnd(64)); pads.set(k, p); }
+    return p;
+  };
+  /** Plays until `until` is true. Seat `liar` reveals a padlock it never committed to. */
+  function run(db: Db, until: (s: GameState) => boolean, liar?: number) {
+    for (let guard = 0; guard < 400 && !until(state(db)); guard++) {
+      const s = state(db);
+      if (s.tableState === "betting" && s.toActSeat !== null) {
+        const seat = s.toActSeat as Seat;
+        const legal = legalActions(s, seat)!;
+        sendR(db, seat, "bet_action", { action: legal.canCheck ? "check" : "call" }, s.handNumber);
+        continue;
+      }
+      const active = s.seats.filter(p => p.inHand).map(p => p.seat);
+      const view = deriveDealing(logRows(db), s.handNumber, active, s.dealerSeat);
+      let sent = false;
+      for (const seat of active) {
+        const [d] = nextDuties({
+          view, mySeat: seat as Seat, activeSeats: active, dealer: s.dealerSeat as Seat,
+          needsCards: s.needsCards, showdown: s.tableState === "showdown", stillInHand: !s.seats[seat].hasFolded,
+        });
+        if (!d) continue;
+        const p = pad(s.handNumber, seat);
+        if (d.kind === "commit") sendR(db, seat, "commit_padlock", { commitment: commitPadlock(p, T, s.handNumber) }, s.handNumber);
+        if (d.kind === "shuffle") sendR(db, seat, "shuffle_step", { step: d.step, deck: lockAndShuffle(d.deckIn, p, randInt) }, s.handNumber);
+        if (d.kind === "unlock") sendR(db, seat, "unlock_card", { cardIndex: d.cardIndex, forSeat: d.forSeat, value: unlockCard(d.valueIn, p) }, s.handNumber);
+        if (d.kind === "reveal") sendR(db, seat, "reveal_padlock", { padlock: seat === liar ? generatePadlock(rnd(64)).hex : p.hex }, s.handNumber);
+        sent = true;
+        break;
+      }
+      if (!sent) throw new Error(`stuck in ${s.tableState} (needsCards ${JSON.stringify(s.needsCards)})`);
+    }
+  }
+  return { run };
+}
+
+describe("lifecycle, Phase 3 (real shuffle)", () => {
+  beforeEach(() => { delete process.env.POKER_DEV_DECK; });
+
+  it("starts hand 1 in dealing with no deck and the hole positions in needsCards", () => {
+    const db = openDb(); table(db);
+    readyAllR(db);
+    const s = state(db);
+    expect(s.tableState).toBe("dealing");
+    expect(s.deck).toBeNull();
+    expect(s.needsCards).toHaveLength(8);
+    expect(totalChips(s)).toBe(4000);
+  });
+
+  it("selects the dev deck with deps.devDeck or POKER_DEV_DECK=1", () => {
+    let db = openDb(); table(db);
+    for (let i = 0; i < 4; i++) ingest(db, deps, mk(db, i, "ready", { ready: true }, 0));
+    afterChange(db, T, { devDeck: true });
+    expect(state(db).deck).toHaveLength(52);
+    expect(state(db).tableState).toBe("betting");
+
+    db = openDb(); table(db);
+    for (let i = 0; i < 4; i++) ingest(db, deps, mk(db, i, "ready", { ready: true }, 0));
+    process.env.POKER_DEV_DECK = "1";
+    try { afterChange(db, T, {}); } finally { delete process.env.POKER_DEV_DECK; }
+    expect(state(db).deck).toHaveLength(52);
+  });
+
+  it("plays a full hand with real shuffle messages to settlement; chips stay 4000; no abort", () => {
+    const db = openDb(); table(db);
+    readyAllR(db);
+    bots().run(db, isSettled);
+    const s = state(db);
+    expect(s.tableState).toBe("settlement");
+    expect(s.aborted).toBeUndefined();
+    expect(s.deck).toBeNull();
+    expect(totalChips(s)).toBe(4000);
+    expect(s.awards.length).toBeGreaterThan(0);
+    expect(serverKinds(db)).toContain("hand_settled");
+    expect(serverKinds(db)).not.toContain("abort");
+  });
+
+  it("a lying reveal aborts the hand: abort log entry, chips back to 1000 each", () => {
+    const db = openDb(); table(db);
+    readyAllR(db);
+    bots().run(db, isSettled, 2); // seat 2 lies at showdown
+    const s = state(db);
+    expect(s.aborted).toEqual({ reason: "BAD_REVEAL" });
+    expect(s.seats.map(p => p.chips)).toEqual([1000, 1000, 1000, 1000]);
+    const aborts = getEvents(db, T).filter(e => e.kind === "server" && (e.body as { kind: string }).kind === "abort");
+    expect(aborts).toHaveLength(1);
+    expect(aborts[0].body).toEqual({ kind: "abort", handNumber: 1, reason: "BAD_REVEAL" });
+  });
+
+  it("an aborted hand still gets a checkpoint and the next hand starts (SPEC D6.4)", () => {
+    const db = openDb(); table(db, 2);
+    readyAllR(db);
+    const g = loadGame(db, T)!.state;
+    expect(g.tableState).toBe("dealing");
+    const ab = abortHand(g, "CRYPTO_STALL");
+    if ("error" in ab) throw new Error(ab.error);
+    saveState(db, T, ab, Date.now());
+    afterChange(db, T, R);
+    expect(serverKinds(db)).toContain("hand_settled");
+    signAll(db, false);
+    afterChange(db, T, R);
+    const s = state(db);
+    expect(s.handNumber).toBe(2);
+    expect(s.tableState).toBe("dealing");
+    expect(s.aborted).toBeUndefined();
+    expect(totalChips(s)).toBe(4000);
+  });
+
+  it("recoverAll in the middle of dealing changes nothing, and the hand still finishes", () => {
+    const db = openDb(); table(db);
+    readyAllR(db);
+    const b = bots();
+    b.run(db, () => cryptoCount(db) >= 6); // 4 commitments + 2 shuffle steps
+    expect(state(db).tableState).toBe("dealing");
+    expect(recoverAll(db, R)).toEqual([]);
+    b.run(db, isSettled);
+    expect(totalChips(state(db))).toBe(4000);
   });
 });

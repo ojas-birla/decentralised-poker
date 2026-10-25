@@ -51,6 +51,7 @@ export default function PokerTable({
   log,
   banner,
   pending = false,
+  busy = null,
   onAction,
   resultSlot,
   extras,
@@ -60,6 +61,7 @@ export default function PokerTable({
   log: LogEntry[];
   banner: Banner | null;
   pending?: boolean; // an action is in flight: the whole action bar is disabled
+  busy?: string | null; // dealing spinner text (null = no spinner)
   onAction: (action: PlayerAction) => void;
   resultSlot?: ReactNode; // last hand result, shown floating over the table
   extras?: ReactNode; // small panels (exit/refund, errors), docked at the left
@@ -87,8 +89,9 @@ export default function PokerTable({
   const chainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? "";
   const linkOk = banner?.level !== "error";
 
-  const status =
-    view.turnSeat === null
+  const status = busy
+    ? busy
+    : view.turnSeat === null
       ? "Waiting for the next step."
       : myTurn
         ? "Your turn."
@@ -190,8 +193,20 @@ export default function PokerTable({
         )}
 
         {/* Connection and table notices */}
-        <div className="absolute inset-x-0 top-[96px] z-30 mx-auto w-fit max-w-[560px] px-4">
+        <div className="absolute inset-x-0 top-[96px] z-30 mx-auto w-fit max-w-[560px] space-y-2 px-4">
           <StatusBanner banner={banner} />
+          {busy && (
+            <p
+              role="status"
+              className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#2b3350] bg-[#0b0b13]/90 px-4 py-1.5 text-sm text-slate-200"
+            >
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"
+              />
+              {busy}
+            </p>
+          )}
         </div>
 
         {resultSlot}

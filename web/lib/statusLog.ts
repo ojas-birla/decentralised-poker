@@ -118,10 +118,16 @@ function describeEntry(row: EventRow): LogEntry | null {
                   : `${who} called.`;
         return { id, kind: "action", text };
       }
-      case "ready":
+            case "ready":
         return { id, kind: "info", text: `${seatName(env.seat)} is ready.` };
       case "checkpoint_sig":
         return { id, kind: "info", text: `${seatName(env.seat)} signed the checkpoint.` };
+      case "commit_padlock":
+        return { id, kind: "info", text: `${seatName(env.seat)} committed to a fresh padlock.` };
+      case "shuffle_step":
+        return { id, kind: "info", text: `${seatName(env.seat)} locked and shuffled the deck.` };
+      case "reveal_padlock":
+        return { id, kind: "info", text: `${seatName(env.seat)} revealed their padlock.` };
       default:
         return null;
     }
@@ -217,5 +223,13 @@ export const MOCK_LOGS: LogEntry[][] = [
     { id: 2, kind: "info", text: "Flop: A♥️ 7♦️ 2♣️." },
     { id: 3, kind: "info", text: "Turn: K♥️." },
     { id: 4, kind: "info", text: "River: 9♠️." },
+  ],
+    [
+    { id: 0, kind: "info", text: "Hand 4 started. Seat 2 is the dealer." },
+    { id: 1, kind: "info", text: "Seat 1 committed to a fresh padlock." },
+    { id: 2, kind: "info", text: "Seat 2 committed to a fresh padlock." },
+    { id: 3, kind: "info", text: "Seat 3 committed to a fresh padlock." },
+    { id: 4, kind: "info", text: "Seat 4 committed to a fresh padlock." },
+    { id: 5, kind: "info", text: "Seat 1 locked and shuffled the deck." },
   ],
 ];

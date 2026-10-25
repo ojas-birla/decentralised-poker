@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { ristretto255 } from "@noble/curves/ed25519.js";
-import { generatePadlock, lockCard, unlockCard, commitPadlock, verifyCommitment, type Padlock } from ".././padlock";
-import { lockAndShuffle } from ".././shuffle";
-import { verifyReveal } from ".././verify";
-import { CARD_POINTS, cardIndexFromPoint } from ".././cards";
+import { generatePadlock, lockCard, unlockCard, commitPadlock, verifyCommitment, type Padlock } from "../padlock";
+import { lockAndShuffle } from "../shuffle";
+import { verifyReveal } from "../verify";
+import { CARD_POINTS, cardIndexFromPoint } from "../cards";
 
 const newPad = () => generatePadlock(crypto.getRandomValues(new Uint8Array(64)));
 function randInt(max: number): number {           // rejection sampling, no modulo bias

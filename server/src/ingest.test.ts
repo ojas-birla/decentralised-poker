@@ -1,3 +1,4 @@
+import { CARD_POINTS } from "@poker/shared/crypto/cards";
 import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,5 +128,82 @@ describe("ingest", () => {
     expect(getPlayer(db, T, 0)!.lastSeq).toBe(1);
     expect(code(ingest(db, deps, bet(0, 1, "fold")))).toBe("DUPLICATE"); // replay after restart is still caught
     db.close();
+  });
+});
+describe("ingest: padlock messages (Phase 3)", () => {
+  // A table in "dealing" (no dev deck). `bust` = a seat with 0 chips that sits this hand out.
+  function setupDealing(db: Db, bust?: number) {
+    setup(db, false);
+    const st = loadGame(db, T)!.state;
+    st.tableState = "ready";
+    if (bust !== undefined) st.seats[bust].chips = 0;
+    saveState(db, T, startHand(st) as GameState); // no deck argument -> Phase 3 "dealing"
+  }
+  const commit = (seat: number, seq: number) => env(seat, seq, "commit_padlock", { commitment: "ab".repeat(32) });
+  const shuffle = (seat: number, seq: number, step: number, deck: string[] = [...CARD_POINTS]) =>
+    env(seat, seq, "shuffle_step", { step, deck });
+
+  it("accepts commits and shuffle steps in order", () => {
+    const db = openDb(); setupDealing(db);
+    for (let s = 0; s < 4; s++) expect(code(ingest(db, deps, commit(s, 1)))).toBe("OK");
+    for (let s = 0; s < 4; s++) expect(code(ingest(db, deps, shuffle(s, 2, s)))).toBe("OK");
+    expect(getEvents(db, T)).toHaveLength(8);
+  });
+
+  it("rejects a shuffle before every commitment is in, and leaves no trace", () => {
+    const db = openDb(); setupDealing(db);
+    expect(code(ingest(db, deps, commit(0, 1)))).toBe("OK");
+    expect(code(ingest(db, deps, shuffle(0, 2, 0)))).toBe("ILLEGAL_ACTION");
+    expect(getEvents(db, T)).toHaveLength(1);
+    expect(getPlayer(db, T, 0)!.lastSeq).toBe(1);
+  });
+
+  it("rejects an out-of-turn shuffle and a repeated commitment", () => {
+    const db = openDb(); setupDealing(db);
+    for (let s = 0; s < 4; s++) ingest(db, deps, commit(s, 1));
+    expect(code(ingest(db, deps, shuffle(1, 2, 0)))).toBe("ILLEGAL_ACTION"); // seat 0 goes first
+    expect(code(ingest(db, deps, commit(0, 2)))).toBe("ILLEGAL_ACTION"); // second commitment
+  });
+
+  it("with a busted seat the shuffle step is the index, not the seat number", () => {
+    const db = openDb(); setupDealing(db, 1); // seat 1 busted -> active seats 0, 2, 3
+    for (const s of [0, 2, 3]) expect(code(ingest(db, deps, commit(s, 1)))).toBe("OK");
+    expect(code(ingest(db, deps, shuffle(0, 2, 0)))).toBe("OK");
+    expect(code(ingest(db, deps, shuffle(2, 2, 1)))).toBe("OK"); // step 1 for seat 2: the old check refused this
+    expect(code(ingest(db, deps, shuffle(3, 2, 2)))).toBe("OK");
+    expect(code(ingest(db, deps, commit(1, 1)))).toBe("ILLEGAL_ACTION"); // the busted seat takes no part
+  });
+
+  it("rejects an unlock for a card that is not in needsCards", () => {
+    const db = openDb(); setupDealing(db);
+    for (let s = 0; s < 4; s++) ingest(db, deps, commit(s, 1));
+    for (let s = 0; s < 4; s++) ingest(db, deps, shuffle(s, 2, s));
+    const early = env(0, 3, "unlock_card", { cardIndex: 8, forSeat: "board", value: CARD_POINTS[0] });
+    expect(code(ingest(db, deps, early))).toBe("ILLEGAL_ACTION"); // flop position, nobody asked for it yet
+  });
+
+  it("rejects a shuffle deck that contains an invalid curve point", () => {
+    const db = openDb(); setupDealing(db);
+    for (let s = 0; s < 4; s++) ingest(db, deps, commit(s, 1));
+    const deck = [...CARD_POINTS]; deck[3] = "ff".repeat(32);
+    expect(code(ingest(db, deps, shuffle(0, 2, 0, deck)))).toBe("BAD_PAYLOAD");
+  });
+
+  it("a replayed message is a DUPLICATE", () => {
+    const db = openDb(); setupDealing(db);
+    expect(code(ingest(db, deps, commit(0, 1)))).toBe("OK");
+    expect(code(ingest(db, deps, commit(0, 1)))).toBe("DUPLICATE");
+  });
+
+  it("a folded seat cannot reveal, a live seat can", () => {
+    const db = openDb(); setup(db, false);
+    const st = loadGame(db, T)!.state;
+    st.tableState = "ready";
+    const s = startHand(st) as GameState;
+    s.tableState = "showdown"; s.street = "showdown"; s.needsCards = null; s.seats[0].hasFolded = true;
+    saveState(db, T, s);
+    const reveal = (seat: number) => env(seat, 1, "reveal_padlock", { padlock: "12".repeat(32) });
+    expect(code(ingest(db, deps, reveal(0)))).toBe("ILLEGAL_ACTION");
+    expect(code(ingest(db, deps, reveal(1)))).toBe("OK");
   });
 });

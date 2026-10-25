@@ -29,7 +29,7 @@ import { POKER_ABI, POKER_ADDRESS } from "@poker/shared";
 import type { Seat } from "@poker/shared";
 import { openDb } from "../src/db";
 import { DB_PATH, PORT, RPC_URL } from "../src/env";
-import { seedTable, startBots, type BotIdentity } from "./botsLib";
+import { seedTable, startBots, type BotIdentity, type CheatKind } from "./botsLib";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(`--${name}`);
@@ -124,11 +124,18 @@ async function main(): Promise<void> {
   const maxMinutes = opt("max-minutes") !== undefined ? Number(opt("max-minutes")) : undefined;
   if (maxMinutes !== undefined && !(maxMinutes > 0)) die("--max-minutes must be a positive number");
   const timeoutSeconds = maxMinutes !== undefined ? maxMinutes * 60 : Number(opt("timeout") ?? 600);
-
+  const cheatArg = args.find(a => a.startsWith("--cheat="));
+  const cheat = cheatArg ? (cheatArg.slice("--cheat=".length) as CheatKind) : undefined;
+  if (cheat !== undefined && !["dup-card", "lie-reveal", "stall"].includes(cheat)) {
+    die(`--cheat must be dup-card, lie-reveal or stall, got "${cheat}"`);
+  }
+  const cheatSeats = cheat === undefined ? [] : opt("cheat-seat") !== undefined
+    ? nums(opt("cheat-seat")) : [identities[identities.length - 1].seat];
   const run = startBots({
     url, tableId, buyInWei, identities, think,
     stallSeats: nums(opt("stall")),
     garbageSeats: nums(opt("garbage")),
+    cheat, cheatSeats, passive: flag("passive"),
     trafficFile: opt("traffic"),
     timeoutMs: timeoutSeconds * 1000,
     log: m => console.log(m),

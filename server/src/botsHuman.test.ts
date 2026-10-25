@@ -5,6 +5,7 @@ import { openDb } from "./db";
 import { loadGame } from "./store";
 import { startGameServer, type GameServer } from "./gameServer";
 import { Bot, seedTable, startBots } from "../scripts/botsLib";
+process.env.POKER_DEV_DECK = "1"; // bots still rely on server dealing; remove when C-8 (bots use the real shuffle) lands
 
 const HUMAN = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01"; // mixed case on purpose: the table stores it lowercase
 const open: GameServer[] = [];

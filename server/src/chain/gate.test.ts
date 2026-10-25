@@ -1,6 +1,6 @@
 // SPEC-2.4: the server watches the contract; a table only becomes `ready` after all 4 deposits are confirmed on-chain.
-import { afterEach, describe, expect, it } from "vitest";
 import { Wallet } from "ethers";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { signEnvelope } from "@poker/shared";
 import type { MessageType } from "@poker/shared";
 import { openDb } from "../db";
@@ -10,7 +10,14 @@ import { verifyEnvelope, verifyCheckpointSig } from "@poker/shared";
 import { startGameServer, type GameServer } from "../gameServer";
 import { pokerInterface } from "./events";
 import type { LogSource } from "./watcher";
-
+// This file tests the deposit gate, not dealing. It relies on the Phase 2 server-dealt deck, so the
+// hand goes straight to "betting" (SPEC-PHASE3 D8). Real-shuffle behaviour is covered in lifecycle.test.ts.
+beforeAll(() => {
+  process.env.POKER_DEV_DECK = "1";
+});
+afterAll(() => {
+  delete process.env.POKER_DEV_DECK;
+});
 const ORIGINS = ["http://localhost:3000"];
 const WALLETS = [0, 1, 2, 3].map(i => "0x" + String(i + 1).repeat(40));
 const KEYS = [0, 1, 2, 3].map(() => Wallet.createRandom());

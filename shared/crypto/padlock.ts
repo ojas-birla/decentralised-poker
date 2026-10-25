@@ -30,6 +30,7 @@ const ORDER = ristretto255.Point.Fn.ORDER;
 
 /** Normalize a bigint into [1, ORDER-1]. */
 function normScalar(n: bigint): bigint {
+  if (n <= 0n || n >= ORDER) throw new Error("padlock scalar out of [1, ORDER-1]");
   const m = ((n % ORDER) + ORDER) % ORDER;
   return m === 0n ? 1n : m;
 }
@@ -67,4 +68,14 @@ export function commitPadlock(padlock: Padlock, tableId: string, handNumber: num
 
 export function verifyCommitment(commitmentHex: string, padlock: Padlock, tableId: string, handNumber: number): boolean {
   return commitPadlock(padlock, tableId, handNumber) === commitmentHex;
+}
+
+export function isValidPointHex(hex: string): boolean {
+  if (!/^[0-9a-f]{64}$/.test(hex)) return false;
+  try {
+    ristretto255.Point.fromHex(hex); // throws on an invalid or non-canonical encoding
+    return true;
+  } catch {
+    return false;
+  }
 }

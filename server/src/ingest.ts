@@ -22,6 +22,7 @@ import type {
 } from "@poker/shared";
 import type { Db } from "./db";
 import { validatePayload } from "./payloads";
+import { checkCrypto } from "./cryptoCheck";
 import { logStreets } from "./streetLog"
 import { syncTurnTimer } from "./timers";
 import {
@@ -62,6 +63,7 @@ const MESSAGE_TYPES: readonly MessageType[] = [
 ];
 
 const PHASE3_ONLY: readonly MessageType[] = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock", "abandon_vote"];
+const CRYPTO_MESSAGES: readonly MessageType[] = ["commit_padlock", "shuffle_step", "unlock_card", "reveal_padlock"];
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -182,8 +184,18 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
       cpStep = { cp, hash: p.checkpointHash, signature: p.signature };
       break;
     }
+    case "commit_padlock":
+    case "shuffle_step":
+    case "unlock_card":
+    case "reveal_padlock": {
+      // Phase 3 (SPEC-PHASE3 C-4): right sender, right order, a card that is waiting, real curve points.
+      // The state does not change here: lifecycle runs applyCrypto after the message is saved.
+      const bad = checkCrypto(db, state, env);
+      if (bad) return fail(bad.code, bad.message);
+      break;
+    }
     default:
-      // join/ready lifecycle (2.4) and the crypto messages (Phase 3) are relayed and logged only for now.
+      // join/ready lifecycle (2.4) is relayed and logged only for now.
       break;
   }
 
@@ -215,6 +227,10 @@ export function ingest(db: Db, deps: IngestDeps, raw: unknown): IngestResult {
       // Restart the clock for whoever acts next (or clear it). Never for `join`: a reconnect changes no game
       // state, and otherwise a stalling player could rejoin forever to reset their own 30 seconds.
       if (env.type !== "join") syncTurnTimer(db, env.tableId, nextState, now);
+    } else if (CRYPTO_MESSAGES.includes(env.type)) {
+      // A crypto message does not change the game state, but it changes who we are waiting for.
+      // The envelope is already in the log (appendEvent above), so awaitedSeat sees it.
+      syncTurnTimer(db, env.tableId, nextState, now);
     }
     return idx;
   })();

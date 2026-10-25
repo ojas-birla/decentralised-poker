@@ -17,6 +17,7 @@ import { fireDueTimers, getTimer, TURN_MS } from "./timers";
 import { attachSockets, FLOOD_MAX_MESSAGES } from "./socket";
 import { startGameServer } from "./gameServer";
 import { seedTable, startBots } from "../scripts/botsLib";
+process.env.POKER_DEV_DECK = "1"; // bots still rely on server dealing; remove when C-8 (bots use the real shuffle) lands
 
 const T = "1";
 const wallet = (i: number) => "0x" + String(i + 1).repeat(40);
