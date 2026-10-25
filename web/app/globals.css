@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --font-grotesk: "Space Grotesk";
+  --font-display: "Playfair Display";
+  --font-mono-table: "JetBrains Mono";
+}
+
 /* ---- Poker table theme (components/table/*) ---- */
 @layer components {
   /* Also defined in tailwind.config.ts, but kept here so they work without a dev-server restart. */
@@ -126,9 +132,25 @@
   }
 }
 
+/* Deck riffle shuffle: odd and even cards split to opposite sides and slide back together. */
+@keyframes riffle-l {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  35% { transform: translate(-30px, -6px) rotate(-9deg); }
+  65% { transform: translate(-8px, 0) rotate(-2deg); }
+}
+@keyframes riffle-r {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  35% { transform: translate(30px, -6px) rotate(9deg); }
+  65% { transform: translate(8px, 0) rotate(2deg); }
+}
+.deck-shuffle .deck-card-l { animation: riffle-l 420ms ease-in-out 3 both; }
+.deck-shuffle .deck-card-r { animation: riffle-r 420ms ease-in-out 3 both; }
+
 @media (prefers-reduced-motion: reduce) {
   .card-face,
-  .turn-pill {
+  .turn-pill,
+  .deck-shuffle .deck-card-l,
+  .deck-shuffle .deck-card-r {
     animation: none;
   }
 }
